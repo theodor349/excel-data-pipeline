@@ -1,0 +1,28 @@
+[project]
+name = "excel-data-pipeline"
+version = "0.1.0"
+description = "Python pipeline replacing an Excel/Power Query workflow for finance reporting"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    "pyodbc>=5.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["functions/tests", "engine/tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["engine", "functions"]

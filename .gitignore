@@ -1,0 +1,24 @@
+# Project-specific
+config.json
+output/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
