@@ -6,11 +6,73 @@ import pandas as pd
 import pytest
 from openpyxl.worksheet.table import Table
 
-from engine.loader import _read_csv_path, read_csv, read_excel, read_sql
+from engine.loader import _read_csv_path, _read_jsonl_path, read_csv, read_excel, read_jsonl, read_sql
 
 
 def _write_config(path, data):
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# _read_jsonl_path — no config involved
+# ---------------------------------------------------------------------------
+
+
+def test_read_jsonl_path_reads_records(tmp_path):
+    jsonl_file = tmp_path / "data.jsonl"
+    jsonl_file.write_text('{"a": 1, "b": "x"}\n{"a": 2, "b": "y"}\n', encoding="utf-8")
+    df = _read_jsonl_path(jsonl_file)
+    assert list(df.columns) == ["a", "b"]
+    assert len(df) == 2
+    assert df["a"].tolist() == [1, 2]
+
+
+def test_read_jsonl_path_skips_blank_lines(tmp_path):
+    jsonl_file = tmp_path / "data.jsonl"
+    jsonl_file.write_text('{"a": 1}\n\n{"a": 2}\n', encoding="utf-8")
+    df = _read_jsonl_path(jsonl_file)
+    assert len(df) == 2
+
+
+def test_read_jsonl_path_empty_file(tmp_path):
+    jsonl_file = tmp_path / "empty.jsonl"
+    jsonl_file.write_text("", encoding="utf-8")
+    df = _read_jsonl_path(jsonl_file)
+    assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# read_jsonl
+# ---------------------------------------------------------------------------
+
+
+def test_read_jsonl_returns_expected_rows_and_columns(tmp_path, monkeypatch):
+    jsonl_file = tmp_path / "events.jsonl"
+    jsonl_file.write_text('{"id": 1, "type": "click"}\n{"id": 2, "type": "view"}\n', encoding="utf-8")
+
+    config = {"jsonl_sources": {"events": str(jsonl_file)}, "csv_sources": {}, "excel_sources": {}, "connections": {}}
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    df = read_jsonl("events")
+    assert list(df.columns) == ["id", "type"]
+    assert len(df) == 2
+    assert df["type"].tolist() == ["click", "view"]
+
+
+def test_read_jsonl_raises_key_error_for_unknown_source(tmp_path, monkeypatch):
+    config = {"jsonl_sources": {}, "csv_sources": {}, "excel_sources": {}, "connections": {}}
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    with pytest.raises(KeyError) as exc_info:
+        read_jsonl("no_such_source")
+
+    error_text = str(exc_info.value)
+    assert "jsonl_sources" in error_text
+    assert "no_such_source" in error_text
 
 
 # ---------------------------------------------------------------------------

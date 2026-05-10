@@ -14,5 +14,8 @@
   },
   "csv_sources": {
     "fx_rates": "C:/data/fx_rates.csv"
+  },
+  "jsonl_sources": {
+    "events": "C:/data/events.jsonl"
   }
 }

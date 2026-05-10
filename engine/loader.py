@@ -82,6 +82,27 @@ def read_excel(source_name: str, sheet_or_table: str) -> pd.DataFrame:
     return _read_excel_path(path, sheet_or_table)
 
 
+def _read_jsonl_path(path: str | Path) -> pd.DataFrame:
+    records = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return pd.DataFrame(records)
+
+
+def read_jsonl(source_name: str) -> pd.DataFrame:
+    config = _load_config()
+    section = "jsonl_sources"
+    if source_name not in config.get(section, {}):
+        raise KeyError(
+            f"'{source_name}' not found in '{section}' in config.json"
+        )
+    path = config[section][source_name]
+    return _read_jsonl_path(path)
+
+
 def read_csv(source_name: str) -> pd.DataFrame:
     config = _load_config()
     section = "csv_sources"
