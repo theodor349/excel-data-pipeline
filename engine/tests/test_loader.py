@@ -1,0 +1,200 @@
+import json
+from unittest.mock import MagicMock, patch
+
+import openpyxl
+import pandas as pd
+import pytest
+from openpyxl.worksheet.table import Table
+
+from engine.loader import _read_csv_path, read_csv, read_excel, read_sql
+
+
+def _write_config(path, data):
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# _read_csv_path — no config involved
+# ---------------------------------------------------------------------------
+
+
+def test_read_csv_path_reads_file(tmp_path):
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text("x,y\n1,2\n3,4\n")
+    df = _read_csv_path(csv_file)
+    assert list(df.columns) == ["x", "y"]
+    assert len(df) == 2
+    assert df["x"].tolist() == [1, 3]
+
+
+# ---------------------------------------------------------------------------
+# read_csv
+# ---------------------------------------------------------------------------
+
+
+def test_read_csv_returns_expected_rows_and_columns(tmp_path, monkeypatch):
+    csv_file = tmp_path / "rates.csv"
+    csv_file.write_text("currency,rate\nUSD,1.0\nEUR,0.9\n")
+
+    config = {"csv_sources": {"fx_rates": str(csv_file)}, "excel_sources": {}, "connections": {}}
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    df = read_csv("fx_rates")
+    assert list(df.columns) == ["currency", "rate"]
+    assert len(df) == 2
+    assert df["currency"].tolist() == ["USD", "EUR"]
+
+
+def test_read_csv_raises_key_error_for_unknown_source(tmp_path, monkeypatch):
+    config = {"csv_sources": {}, "excel_sources": {}, "connections": {}}
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    with pytest.raises(KeyError) as exc_info:
+        read_csv("no_such_source")
+
+    error_text = str(exc_info.value)
+    assert "csv_sources" in error_text
+    assert "no_such_source" in error_text
+
+
+# ---------------------------------------------------------------------------
+# read_excel — sheet by name
+# ---------------------------------------------------------------------------
+
+
+def _make_simple_xlsx(path, sheet_name="Sheet1"):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    ws.append(["name", "value"])
+    ws.append(["alpha", 10])
+    ws.append(["beta", 20])
+    wb.save(path)
+
+
+def test_read_excel_reads_sheet_by_name(tmp_path, monkeypatch):
+    xlsx_file = tmp_path / "data.xlsx"
+    _make_simple_xlsx(xlsx_file, sheet_name="MySheet")
+
+    config = {
+        "excel_sources": {"my_source": str(xlsx_file)},
+        "csv_sources": {},
+        "connections": {},
+    }
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    df = read_excel("my_source", "MySheet")
+    assert list(df.columns) == ["name", "value"]
+    assert len(df) == 2
+    assert df["name"].tolist() == ["alpha", "beta"]
+
+
+# ---------------------------------------------------------------------------
+# read_excel — table by table name
+# ---------------------------------------------------------------------------
+
+
+def _make_xlsx_with_table(path, table_name="SalesTable"):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data"
+    ws.append(["product", "amount"])
+    ws.append(["widget", 100])
+    ws.append(["gadget", 200])
+    table = Table(displayName=table_name, ref="A1:B3")
+    ws.add_table(table)
+    wb.save(path)
+
+
+def test_read_excel_reads_table_by_name_when_no_sheet_matches(tmp_path, monkeypatch):
+    xlsx_file = tmp_path / "sales.xlsx"
+    _make_xlsx_with_table(xlsx_file, table_name="SalesTable")
+
+    config = {
+        "excel_sources": {"sales": str(xlsx_file)},
+        "csv_sources": {},
+        "connections": {},
+    }
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    df = read_excel("sales", "SalesTable")
+    assert list(df.columns) == ["product", "amount"]
+    assert len(df) == 2
+    assert df["product"].tolist() == ["widget", "gadget"]
+
+
+# ---------------------------------------------------------------------------
+# read_excel — neither sheet nor table found
+# ---------------------------------------------------------------------------
+
+
+def test_read_excel_raises_when_neither_sheet_nor_table_found(tmp_path, monkeypatch):
+    xlsx_file = tmp_path / "data.xlsx"
+    _make_simple_xlsx(xlsx_file, sheet_name="RealSheet")
+
+    config = {
+        "excel_sources": {"my_source": str(xlsx_file)},
+        "csv_sources": {},
+        "connections": {},
+    }
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    with pytest.raises(KeyError) as exc_info:
+        read_excel("my_source", "NonExistent")
+
+    assert "NonExistent" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# read_sql — mocked pyodbc
+# ---------------------------------------------------------------------------
+
+
+def test_read_sql_builds_connection_string_and_calls_read_sql(tmp_path, monkeypatch):
+    config = {
+        "connections": {
+            "sales_db": {
+                "type": "mssql",
+                "host": "my-server",
+                "database": "SalesDB",
+                "username": "reader",
+                "password": "secret",
+            }
+        },
+        "excel_sources": {},
+        "csv_sources": {},
+    }
+    config_path = tmp_path / "config.json"
+    _write_config(config_path, config)
+    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
+
+    mock_conn = MagicMock()
+    expected_df = pd.DataFrame({"id": [1, 2], "val": ["a", "b"]})
+
+    mock_pyodbc = MagicMock()
+    mock_pyodbc.connect.return_value = mock_conn
+
+    with patch.dict("sys.modules", {"pyodbc": mock_pyodbc}), \
+         patch("pandas.read_sql", return_value=expected_df) as mock_read_sql:
+
+        query = "SELECT id, val FROM some_table"
+        result = read_sql("sales_db", query)
+
+        connect_call_args = mock_pyodbc.connect.call_args[0][0]
+        assert "my-server" in connect_call_args
+        assert "SalesDB" in connect_call_args
+        assert "reader" in connect_call_args
+
+        mock_read_sql.assert_called_once_with(query, mock_conn)
+        pd.testing.assert_frame_equal(result, expected_df)
+        mock_conn.close.assert_called_once()
