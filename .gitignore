@@ -2,6 +2,7 @@
 config.json
 output/
 logs/
+local/
 
 # Python
 __pycache__/
