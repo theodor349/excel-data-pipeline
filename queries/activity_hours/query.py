@@ -10,6 +10,7 @@ from functions.transforms import keep_columns, rename
 def load():
     return {
         "activities": read_jsonl("activities"),
+        "categories": read_jsonl("categories"),
         "entries": read_jsonl("entries"),
         "entry_activities": read_jsonl("entry_activities"),
     }
@@ -17,11 +18,14 @@ def load():
 
 def run(data):
     activities = data["activities"]
+    categories = data["categories"]
     entries = data["entries"]
     entry_activities = data["entry_activities"]
 
     expect_non_empty(activities, "activities")
-    expect_columns(activities, ["_id", "displayName"])
+    expect_columns(activities, ["_id", "displayName", "categoryId"])
+    expect_non_empty(categories, "categories")
+    expect_columns(categories, ["_id", "displayName"])
     expect_non_empty(entries, "entries")
     expect_columns(entries, ["_id", "startTime", "duration"])
     expect_non_empty(entry_activities, "entry_activities")
@@ -31,16 +35,28 @@ def run(data):
     entries["startTime"] = pd.to_datetime(entries["startTime"], unit="ms")
     entries["hours"] = entries["duration"] / 3_600_000.0
 
+    activities = merge(activities, categories, left_on="categoryId", right_on="_id")
+    activities = rename(activities, "displayName_y", "category")
+    activities = rename(activities, "displayName_x", "displayName")
+    activities = rename(activities, "_id_x", "_id")
+    activities = keep_columns(activities, ["_id", "displayName", "category"])
+
     joined = merge(entry_activities, entries, left_on="entryId", right_on="_id")
     joined = merge(joined, activities, left_on="activityId", right_on="_id")
-    joined = keep_columns(joined, ["displayName", "hours", "startTime"])
+    joined = keep_columns(joined, ["displayName", "category", "hours", "startTime"])
 
-    total_hours = sum(joined, "displayName", "hours")
-    first_entry = min(joined, "displayName", "startTime")
+    group_cols = ["displayName", "category"]
+    total_hours = sum(joined, group_cols, "hours")
+    first_entry = min(joined, group_cols, "startTime")
     first_entry["startTime"] = first_entry["startTime"].dt.date
 
-    result = merge(total_hours, first_entry, on="displayName")
+    result = merge(total_hours, first_entry, on=group_cols)
     result = rename(result, "startTime", "first_entry")
-    result = result.sort_values("hours", ascending=False)
+    result = rename(result, "displayName", "Activity")
+    result = rename(result, "category", "Category")
+    result = rename(result, "hours", "Hours")
+    result = rename(result, "first_entry", "First Entry")
+    result = result.sort_values("Hours", ascending=False)
+    result = keep_columns(result, ["Category", "Activity", "Hours", "First Entry"])
 
     return {"ActivityHours": result}
