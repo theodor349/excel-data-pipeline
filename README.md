@@ -26,6 +26,12 @@ uv run python run.py --all --test-only
 
 Copy `config.example.json` to `config.json` and fill in real source paths and credentials. `config.json` is gitignored.
 
+## Performance
+
+| Query | Python pipeline | Excel Power Query |
+|---|---|---|
+| activity_hours | 0.28 s | 4.5 s |
+
 ## User guide
 
 See `QUERIES.md` for instructions on authoring new queries.
