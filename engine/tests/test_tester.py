@@ -2,7 +2,7 @@ import textwrap
 from decimal import Decimal
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import pytest
 
 from engine.tester import test_all as run_tests_all, test_one as run_tests_one
@@ -36,13 +36,12 @@ def test_passing_query(tmp_path, capsys):
         tmp_path,
         "trivial",
         query_py="""
+            import polars as pl
             def load():
                 raise RuntimeError("should not be called")
 
             def run(data):
-                df = data["src"].copy()
-                df["y"] = df["x"] * 2
-                return {"Out": df}
+                return {"Out": data["src"].with_columns((pl.col("x") * 2).alias("y"))}
         """,
         test_py="""
             FIXTURES = {"src": "testData/src.csv"}
@@ -62,11 +61,10 @@ def test_failing_query_shows_cell_mismatch(tmp_path, capsys):
         tmp_path,
         "broken",
         query_py="""
+            import polars as pl
             def load(): raise RuntimeError
             def run(data):
-                df = data["src"].copy()
-                df["y"] = df["x"] * 2
-                return {"Out": df}
+                return {"Out": data["src"].with_columns((pl.col("x") * 2).alias("y"))}
         """,
         test_py="""
             FIXTURES = {"src": "testData/src.csv"}
@@ -87,12 +85,12 @@ def test_multiple_sheets_one_passes_one_fails(tmp_path, capsys):
         tmp_path,
         "multi",
         query_py="""
-            import pandas as pd
+            import polars as pl
             def load(): raise RuntimeError
             def run(data):
                 return {
-                    "A": pd.DataFrame({"v": [1, 2]}),
-                    "B": pd.DataFrame({"v": [3, 4]}),
+                    "A": pl.DataFrame({"v": [1, 2]}),
+                    "B": pl.DataFrame({"v": [3, 4]}),
                 }
         """,
         test_py="""
@@ -143,9 +141,9 @@ def test_test_all_returns_one_if_any_fail(tmp_path, capsys):
         tmp_path,
         "good",
         query_py="""
-            import pandas as pd
+            import polars as pl
             def load(): raise RuntimeError
-            def run(data): return {"Out": pd.DataFrame({"v": [1]})}
+            def run(data): return {"Out": pl.DataFrame({"v": [1]})}
         """,
         test_py="""
             FIXTURES = {}
@@ -158,9 +156,9 @@ def test_test_all_returns_one_if_any_fail(tmp_path, capsys):
         tmp_path,
         "bad",
         query_py="""
-            import pandas as pd
+            import polars as pl
             def load(): raise RuntimeError
-            def run(data): return {"Out": pd.DataFrame({"v": [1]})}
+            def run(data): return {"Out": pl.DataFrame({"v": [1]})}
         """,
         test_py="""
             FIXTURES = {}
@@ -181,9 +179,9 @@ def test_test_all_returns_zero_when_all_pass(tmp_path, capsys):
         tmp_path,
         "ok1",
         query_py="""
-            import pandas as pd
+            import polars as pl
             def load(): raise RuntimeError
-            def run(data): return {"Out": pd.DataFrame({"v": [1]})}
+            def run(data): return {"Out": pl.DataFrame({"v": [1]})}
         """,
         test_py="""
             FIXTURES = {}
@@ -208,11 +206,11 @@ def test_load_is_never_called(tmp_path, capsys):
         tmp_path,
         "no_load",
         query_py="""
-            import pandas as pd
+            import polars as pl
             def load():
                 raise RuntimeError("load() must not be called during tests")
             def run(data):
-                return {"Out": pd.DataFrame({"v": [1]})}
+                return {"Out": pl.DataFrame({"v": [1]})}
         """,
         test_py="""
             FIXTURES = {}

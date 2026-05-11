@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 
 from engine.loader import read_jsonl
 from engine.validator import expect_columns, expect_non_empty
@@ -31,14 +31,15 @@ def run(data):
     expect_non_empty(entry_activities, "entry_activities")
     expect_columns(entry_activities, ["activityId", "entryId"])
 
-    entries = entries.copy()
-    entries["startTime"] = pd.to_datetime(entries["startTime"], unit="ms")
-    entries["hours"] = entries["duration"] / 3_600_000.0
+    entries = entries.with_columns([
+        pl.col("startTime").cast(pl.Datetime(time_unit="ms")),
+        (pl.col("duration") / 3_600_000.0).alias("hours"),
+    ])
 
+    # Polars join with left_on/right_on drops the right key; conflicting non-key
+    # columns get a "_right" suffix.
     activities = merge(activities, categories, left_on="categoryId", right_on="_id")
-    activities = rename(activities, "displayName_y", "category")
-    activities = rename(activities, "displayName_x", "displayName")
-    activities = rename(activities, "_id_x", "_id")
+    activities = rename(activities, "displayName_right", "category")
     activities = keep_columns(activities, ["_id", "displayName", "category"])
 
     joined = merge(entry_activities, entries, left_on="entryId", right_on="_id")
@@ -48,7 +49,7 @@ def run(data):
     group_cols = ["displayName", "category"]
     total_hours = sum(joined, group_cols, "hours")
     first_entry = min(joined, group_cols, "startTime")
-    first_entry["startTime"] = first_entry["startTime"].dt.date
+    first_entry = first_entry.with_columns(pl.col("startTime").dt.date())
 
     result = merge(total_hours, first_entry, on=group_cols)
     result = rename(result, "startTime", "first_entry")
@@ -56,7 +57,7 @@ def run(data):
     result = rename(result, "category", "Category")
     result = rename(result, "hours", "Hours")
     result = rename(result, "first_entry", "First Entry")
-    result = result.sort_values("Hours", ascending=False)
+    result = result.sort("Hours", descending=True)
     result = keep_columns(result, ["Category", "Activity", "Hours", "First Entry"])
 
     return {"ActivityHours": result}

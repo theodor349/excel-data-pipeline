@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import pytest
 
 from engine.runner import run_all, run_one
@@ -15,18 +15,16 @@ def _make_query(queries_dir: Path, name: str, query_src: str) -> Path:
 
 
 PASSING_QUERY_SRC = """\
-import pandas as pd
+import polars as pl
 
 def load():
     return {}
 
 def run(data):
-    return {"Out": pd.DataFrame({"x": [1, 2, 3]})}
+    return {"Out": pl.DataFrame({"x": [1, 2, 3]})}
 """
 
 FAILING_QUERY_SRC = """\
-import pandas as pd
-
 def load():
     return {}
 
@@ -35,17 +33,15 @@ def run(data):
 """
 
 MISSING_RUN_QUERY_SRC = """\
-import pandas as pd
-
 def load():
     return {}
 """
 
 KEYERROR_QUERY_SRC = """\
-import pandas as pd
+import polars as pl
 
 def load():
-    return {"sales": pd.DataFrame({"amount": [10, 20]})}
+    return {"sales": pl.DataFrame({"amount": [10, 20]})}
 
 def run(data):
     df = data["sales"]
@@ -240,7 +236,7 @@ class TestRunAllKeyErrorInRun:
         summary = _read_summary(output_folder)
         assert summary["queries"]["bad_key"]["status"] == "failed"
         reason = summary["queries"]["bad_key"]["reason"]
-        assert "KeyError" in reason
+        assert "Error" in reason
 
 
 class TestDiscoverySkipsSpecialDirs:

@@ -5,7 +5,7 @@ description = "Python pipeline replacing an Excel/Power Query workflow for finan
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pandas>=2.2",
+    "polars>=1.0",
     "openpyxl>=3.1",
     "pyodbc>=5.1",
 ]
