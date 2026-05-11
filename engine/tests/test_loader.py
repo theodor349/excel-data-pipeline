@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import openpyxl
-import pandas as pd
+import polars as pl
 import pytest
 from openpyxl.worksheet.table import Table
 
@@ -24,7 +24,7 @@ def test_read_jsonl_path_reads_records(tmp_path):
     df = _read_jsonl_path(jsonl_file)
     assert list(df.columns) == ["a", "b"]
     assert len(df) == 2
-    assert df["a"].tolist() == [1, 2]
+    assert df["a"].to_list() == [1, 2]
 
 
 def test_read_jsonl_path_skips_blank_lines(tmp_path):
@@ -58,7 +58,7 @@ def test_read_jsonl_returns_expected_rows_and_columns(tmp_path, monkeypatch):
     df = read_jsonl("events")
     assert list(df.columns) == ["id", "type"]
     assert len(df) == 2
-    assert df["type"].tolist() == ["click", "view"]
+    assert df["type"].to_list() == ["click", "view"]
 
 
 def test_read_jsonl_raises_key_error_for_unknown_source(tmp_path, monkeypatch):
@@ -86,7 +86,7 @@ def test_read_csv_path_reads_file(tmp_path):
     df = _read_csv_path(csv_file)
     assert list(df.columns) == ["x", "y"]
     assert len(df) == 2
-    assert df["x"].tolist() == [1, 3]
+    assert df["x"].to_list() == [1, 3]
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def test_read_csv_returns_expected_rows_and_columns(tmp_path, monkeypatch):
     df = read_csv("fx_rates")
     assert list(df.columns) == ["currency", "rate"]
     assert len(df) == 2
-    assert df["currency"].tolist() == ["USD", "EUR"]
+    assert df["currency"].to_list() == ["USD", "EUR"]
 
 
 def test_read_csv_raises_key_error_for_unknown_source(tmp_path, monkeypatch):
@@ -154,7 +154,7 @@ def test_read_excel_reads_sheet_by_name(tmp_path, monkeypatch):
     df = read_excel("my_source", "MySheet")
     assert list(df.columns) == ["name", "value"]
     assert len(df) == 2
-    assert df["name"].tolist() == ["alpha", "beta"]
+    assert df["name"].to_list() == ["alpha", "beta"]
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def test_read_excel_reads_table_by_name_when_no_sheet_matches(tmp_path, monkeypa
     df = read_excel("sales", "SalesTable")
     assert list(df.columns) == ["product", "amount"]
     assert len(df) == 2
-    assert df["product"].tolist() == ["widget", "gadget"]
+    assert df["product"].to_list() == ["widget", "gadget"]
 
 
 # ---------------------------------------------------------------------------
@@ -240,15 +240,17 @@ def test_read_sql_builds_connection_string_and_calls_read_sql(tmp_path, monkeypa
     _write_config(config_path, config)
     monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
 
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("id",), ("val",)]
+    mock_cursor.fetchall.return_value = [(1, "a"), (2, "b")]
+
     mock_conn = MagicMock()
-    expected_df = pd.DataFrame({"id": [1, 2], "val": ["a", "b"]})
+    mock_conn.cursor.return_value = mock_cursor
 
     mock_pyodbc = MagicMock()
     mock_pyodbc.connect.return_value = mock_conn
 
-    with patch.dict("sys.modules", {"pyodbc": mock_pyodbc}), \
-         patch("pandas.read_sql", return_value=expected_df) as mock_read_sql:
-
+    with patch.dict("sys.modules", {"pyodbc": mock_pyodbc}):
         query = "SELECT id, val FROM some_table"
         result = read_sql("sales_db", query)
 
@@ -257,6 +259,8 @@ def test_read_sql_builds_connection_string_and_calls_read_sql(tmp_path, monkeypa
         assert "SalesDB" in connect_call_args
         assert "reader" in connect_call_args
 
-        mock_read_sql.assert_called_once_with(query, mock_conn)
-        pd.testing.assert_frame_equal(result, expected_df)
+        mock_cursor.execute.assert_called_once_with(query)
+        assert list(result.columns) == ["id", "val"]
+        assert len(result) == 2
+        assert result["id"].to_list() == [1, 2]
         mock_conn.close.assert_called_once()

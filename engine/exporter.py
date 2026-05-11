@@ -1,10 +1,9 @@
 import decimal
-import os
 import uuid
 from pathlib import Path
 
 import openpyxl
-import pandas as pd
+import polars as pl
 
 _INVALID_SHEET_CHARS = frozenset(r"/\?*[]:")
 _MAX_SHEET_NAME_LEN = 31
@@ -22,9 +21,8 @@ def _validate_sheet_name(name: str) -> None:
         )
 
 
-def _decimal_places_for_column(series: pd.Series) -> int:
-    non_null = series.dropna()
-    sample = [v for v in non_null if isinstance(v, decimal.Decimal)][:10]
+def _decimal_places_for_column(col: pl.Series) -> int:
+    sample = [v for v in col if isinstance(v, decimal.Decimal)][:10]
     if not sample:
         return 2
     max_places = 0
@@ -35,16 +33,16 @@ def _decimal_places_for_column(series: pd.Series) -> int:
     return max_places if max_places > 0 else 2
 
 
-def _is_decimal_column(series: pd.Series) -> bool:
-    if series.dtype != object:
+def _is_decimal_column(col: pl.Series) -> bool:
+    if col.dtype != pl.Object:
         return False
-    for value in series:
-        if value is not None and not (isinstance(value, float) and pd.isna(value)):
+    for value in col:
+        if value is not None:
             return isinstance(value, decimal.Decimal)
     return False
 
 
-def export(sheets: dict[str, pd.DataFrame], output_folder: str | Path, filename: str) -> None:
+def export(sheets: dict[str, pl.DataFrame], output_folder: str | Path, filename: str) -> None:
     for name in sheets:
         _validate_sheet_name(name)
 
@@ -65,15 +63,15 @@ def export(sheets: dict[str, pd.DataFrame], output_folder: str | Path, filename:
 
         decimal_columns: dict[int, str] = {}
         for col_idx, col_name in enumerate(df.columns):
-            series = df[col_name]
-            if _is_decimal_column(series):
-                places = _decimal_places_for_column(series)
+            col = df[col_name]
+            if _is_decimal_column(col):
+                places = _decimal_places_for_column(col)
                 fmt = "#,##0." + "0" * places
                 decimal_columns[col_idx] = fmt
 
         ws.append(list(df.columns))
 
-        for row_tuple in df.itertuples(index=False, name=None):
+        for row_tuple in df.iter_rows():
             row_data = []
             for col_idx, value in enumerate(row_tuple):
                 if col_idx in decimal_columns and isinstance(value, decimal.Decimal):

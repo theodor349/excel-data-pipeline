@@ -1,4 +1,4 @@
-import pandas
+import polars as pl
 import pytest
 
 from engine.validator import expect_columns, expect_non_empty
@@ -6,7 +6,7 @@ from engine.validator import expect_columns, expect_non_empty
 
 def make_df(*columns, rows=1):
     data = {col: ["x"] * rows for col in columns}
-    return pandas.DataFrame(data)
+    return pl.DataFrame(data)
 
 
 def test_expect_columns_passes_when_all_present():

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import openpyxl
-import pandas as pd
+import polars as pl
 from openpyxl.utils import range_boundaries
 
 _project_root: Path | None = None
@@ -32,20 +32,21 @@ def _load_config() -> dict:
         return json.load(f)
 
 
-def _read_csv_path(path: str | Path) -> pd.DataFrame:
-    return pd.read_csv(path)
+def _read_csv_path(path: str | Path) -> pl.DataFrame:
+    return pl.read_csv(path)
 
 
-def _read_excel_path(path: str | Path, sheet_or_table: str) -> pd.DataFrame:
+def _read_excel_path(path: str | Path, sheet_or_table: str) -> pl.DataFrame:
     wb = openpyxl.load_workbook(path, data_only=True)
 
     if sheet_or_table in wb.sheetnames:
         ws = wb[sheet_or_table]
         rows = list(ws.values)
         if not rows:
-            return pd.DataFrame()
+            return pl.DataFrame()
         headers = [str(h) if h is not None else f"col_{i}" for i, h in enumerate(rows[0])]
-        return pd.DataFrame(rows[1:], columns=headers)
+        data = {h: [row[i] for row in rows[1:]] for i, h in enumerate(headers)}
+        return pl.DataFrame(data)
 
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
@@ -62,16 +63,17 @@ def _read_excel_path(path: str | Path, sheet_or_table: str) -> pd.DataFrame:
                     )
                 )
                 if not rows:
-                    return pd.DataFrame()
+                    return pl.DataFrame()
                 headers = [str(h) if h is not None else f"col_{i}" for i, h in enumerate(rows[0])]
-                return pd.DataFrame(rows[1:], columns=headers)
+                data = {h: [row[i] for row in rows[1:]] for i, h in enumerate(headers)}
+                return pl.DataFrame(data)
 
     raise KeyError(
         f"'{sheet_or_table}' is not a sheet name or table name in '{path}'"
     )
 
 
-def read_excel(source_name: str, sheet_or_table: str) -> pd.DataFrame:
+def read_excel(source_name: str, sheet_or_table: str) -> pl.DataFrame:
     config = _load_config()
     section = "excel_sources"
     if source_name not in config.get(section, {}):
@@ -82,17 +84,19 @@ def read_excel(source_name: str, sheet_or_table: str) -> pd.DataFrame:
     return _read_excel_path(path, sheet_or_table)
 
 
-def _read_jsonl_path(path: str | Path) -> pd.DataFrame:
+def _read_jsonl_path(path: str | Path) -> pl.DataFrame:
     records = []
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 records.append(json.loads(line))
-    return pd.DataFrame(records)
+    if not records:
+        return pl.DataFrame()
+    return pl.DataFrame(records)
 
 
-def read_jsonl(source_name: str) -> pd.DataFrame:
+def read_jsonl(source_name: str) -> pl.DataFrame:
     config = _load_config()
     section = "jsonl_sources"
     if source_name not in config.get(section, {}):
@@ -103,7 +107,7 @@ def read_jsonl(source_name: str) -> pd.DataFrame:
     return _read_jsonl_path(path)
 
 
-def read_csv(source_name: str) -> pd.DataFrame:
+def read_csv(source_name: str) -> pl.DataFrame:
     config = _load_config()
     section = "csv_sources"
     if source_name not in config.get(section, {}):
@@ -114,7 +118,7 @@ def read_csv(source_name: str) -> pd.DataFrame:
     return _read_csv_path(path)
 
 
-def read_sql(connection_name: str, query: str) -> pd.DataFrame:
+def read_sql(connection_name: str, query: str) -> pl.DataFrame:
     import pyodbc
 
     config = _load_config()
@@ -135,7 +139,12 @@ def read_sql(connection_name: str, query: str) -> pd.DataFrame:
         )
         conn = pyodbc.connect(conn_str)
         try:
-            return pd.read_sql(query, conn)
+            cursor = conn.cursor()
+            cursor.execute(query)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+            return pl.DataFrame(data)
         finally:
             conn.close()
     else:

@@ -5,7 +5,7 @@ import math
 from decimal import Decimal
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
 from engine.loader import _read_csv_path, _read_excel_path
 
@@ -32,7 +32,7 @@ def _load_module(module_name: str, path: Path):
     return module
 
 
-def _read_fixture(path: Path) -> pd.DataFrame:
+def _read_fixture(path: Path) -> pl.DataFrame:
     if path.suffix.lower() == ".csv":
         return _read_csv_path(path)
     if path.suffix.lower() == ".xlsx":
@@ -45,7 +45,7 @@ def _cells_equal(actual, expected) -> bool:
         return expected is None or (isinstance(expected, float) and math.isnan(expected))
     if expected is None or (isinstance(expected, float) and math.isnan(expected)):
         return False
-    # Decimal vs float: coerce expected float to Decimal via str() so plain CSV
+    # Decimal vs float/int: coerce expected to Decimal via str() so plain CSV
     # values can compare exactly against Decimal-typed query output.
     if isinstance(actual, Decimal) and isinstance(expected, (int, float)):
         return actual == Decimal(str(expected))
@@ -60,7 +60,7 @@ def _cells_equal(actual, expected) -> bool:
     return actual == expected
 
 
-def _compare(actual: pd.DataFrame, expected: pd.DataFrame, sheet: str) -> list[str]:
+def _compare(actual: pl.DataFrame, expected: pl.DataFrame, sheet: str) -> list[str]:
     mismatches = []
     if len(actual) != len(expected):
         mismatches.append(
@@ -75,8 +75,8 @@ def _compare(actual: pd.DataFrame, expected: pd.DataFrame, sheet: str) -> list[s
         return mismatches
     for col in expected.columns:
         for i in range(len(expected)):
-            a = actual.iloc[i][col]
-            e = expected.iloc[i][col]
+            a = actual[col][i]
+            e = expected[col][i]
             if not _cells_equal(a, e):
                 mismatches.append(
                     f'  sheet "{sheet}": column "{col}" row {i}: expected {e!r}, actual {a!r}'
