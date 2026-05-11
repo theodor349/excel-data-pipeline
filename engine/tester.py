@@ -1,3 +1,4 @@
+import datetime
 import importlib.util
 import logging
 import math
@@ -52,6 +53,10 @@ def _cells_equal(actual, expected) -> bool:
         return Decimal(str(actual)) == expected
     if isinstance(actual, float) and isinstance(expected, float):
         return abs(actual - expected) <= _FLOAT_TOLERANCE
+    if isinstance(actual, datetime.date) and isinstance(expected, str):
+        return str(actual) == expected
+    if isinstance(expected, datetime.date) and isinstance(actual, str):
+        return actual == str(expected)
     return actual == expected
 
 
