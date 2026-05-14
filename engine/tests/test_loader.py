@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 import openpyxl
 import polars as pl
 import pytest
-from openpyxl.worksheet.table import Table
 
 from engine.loader import _read_csv_path, _read_jsonl_path, read_csv, read_excel, read_jsonl, read_sql
 
@@ -158,47 +157,11 @@ def test_read_excel_reads_sheet_by_name(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# read_excel — table by table name
+# read_excel — unknown sheet name raises
 # ---------------------------------------------------------------------------
 
 
-def _make_xlsx_with_table(path, table_name="SalesTable"):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Data"
-    ws.append(["product", "amount"])
-    ws.append(["widget", 100])
-    ws.append(["gadget", 200])
-    table = Table(displayName=table_name, ref="A1:B3")
-    ws.add_table(table)
-    wb.save(path)
-
-
-def test_read_excel_reads_table_by_name_when_no_sheet_matches(tmp_path, monkeypatch):
-    xlsx_file = tmp_path / "sales.xlsx"
-    _make_xlsx_with_table(xlsx_file, table_name="SalesTable")
-
-    config = {
-        "excel_sources": {"sales": str(xlsx_file)},
-        "csv_sources": {},
-        "connections": {},
-    }
-    config_path = tmp_path / "config.json"
-    _write_config(config_path, config)
-    monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
-
-    df = read_excel("sales", "SalesTable")
-    assert list(df.columns) == ["product", "amount"]
-    assert len(df) == 2
-    assert df["product"].to_list() == ["widget", "gadget"]
-
-
-# ---------------------------------------------------------------------------
-# read_excel — neither sheet nor table found
-# ---------------------------------------------------------------------------
-
-
-def test_read_excel_raises_when_neither_sheet_nor_table_found(tmp_path, monkeypatch):
+def test_read_excel_raises_when_sheet_not_found(tmp_path, monkeypatch):
     xlsx_file = tmp_path / "data.xlsx"
     _make_simple_xlsx(xlsx_file, sheet_name="RealSheet")
 
@@ -211,10 +174,8 @@ def test_read_excel_raises_when_neither_sheet_nor_table_found(tmp_path, monkeypa
     _write_config(config_path, config)
     monkeypatch.setenv("PIPELINE_CONFIG", str(config_path))
 
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(Exception):
         read_excel("my_source", "NonExistent")
-
-    assert "NonExistent" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

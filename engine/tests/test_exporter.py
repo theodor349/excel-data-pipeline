@@ -48,8 +48,9 @@ def test_no_tmp_files_remain_after_export(tmp_path):
 
 
 def test_decimal_round_trip_precision(tmp_path):
-    col = [Decimal("0.10")] * 1000
-    df = pl.DataFrame({"amount": col}, schema={"amount": pl.Object})
+    df = pl.DataFrame({"amount": ["0.10"] * 1000}).with_columns(
+        pl.col("amount").cast(pl.Decimal(scale=2))
+    )
     export({"Sheet1": df}, tmp_path, "decimal_test.xlsx")
 
     wb = openpyxl.load_workbook(tmp_path / "decimal_test.xlsx", data_only=True)
@@ -69,9 +70,8 @@ def test_decimal_round_trip_precision(tmp_path):
 
 
 def test_decimal_three_places_gets_correct_format(tmp_path):
-    df = pl.DataFrame(
-        {"price": [Decimal("1.234"), Decimal("5.678")]},
-        schema={"price": pl.Object},
+    df = pl.DataFrame({"price": ["1.234", "5.678"]}).with_columns(
+        pl.col("price").cast(pl.Decimal(scale=3))
     )
     export({"Prices": df}, tmp_path, "three_dp.xlsx")
 

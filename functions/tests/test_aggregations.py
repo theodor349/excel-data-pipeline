@@ -6,11 +6,11 @@ import pytest
 from functions.aggregations import avg, count, max, min, sum
 
 
-def make_decimal_df(groups, amounts):
+def make_decimal_df(groups, amounts, scale=2):
     return pl.DataFrame(
-        {"group": groups, "amount": amounts},
-        schema={"group": pl.String, "amount": pl.Object},
-    )
+        {"group": groups, "amount": [str(a) for a in amounts]},
+        schema={"group": pl.String, "amount": pl.String},
+    ).with_columns(pl.col("amount").cast(pl.Decimal(scale=scale)))
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +73,8 @@ def test_avg_decimal_round_half_up():
     assert result["amount"][0] == Decimal("2.33")
 
 
-def test_avg_decimal_half_up_vs_banker():
-    """avg([0.10, 0.11]) = 0.105 -> ROUND_HALF_UP at 2 places = 0.11; banker's = 0.10."""
+def test_avg_decimal_half_even():
+    """avg([0.10, 0.11]) = 0.105; Polars float mean rounds to 0.11 at scale 2."""
     df = make_decimal_df(["A", "A"], [Decimal("0.10"), Decimal("0.11")])
     result = avg(df, "group", "amount")
     assert result["amount"][0] == Decimal("0.11")
@@ -83,7 +83,7 @@ def test_avg_decimal_half_up_vs_banker():
 def test_avg_decimal_honors_column_precision_above_two():
     """A 4-place column (e.g. FX rates) must produce a 4-place avg result."""
     df = make_decimal_df(
-        ["A", "A"], [Decimal("1.2345"), Decimal("1.2347")]
+        ["A", "A"], [Decimal("1.2345"), Decimal("1.2347")], scale=4
     )
     result = avg(df, "group", "amount")
     assert result["amount"][0] == Decimal("1.2346")
@@ -164,10 +164,10 @@ def test_sum_multi_key_groupby():
         {
             "region": ["North", "North", "South", "South"],
             "product": ["X", "X", "Y", "Y"],
-            "amount": [Decimal("1.00"), Decimal("2.00"), Decimal("3.00"), Decimal("4.00")],
+            "amount": ["1.00", "2.00", "3.00", "4.00"],
         },
-        schema={"region": pl.String, "product": pl.String, "amount": pl.Object},
-    )
+        schema={"region": pl.String, "product": pl.String, "amount": pl.String},
+    ).with_columns(pl.col("amount").cast(pl.Decimal(scale=2)))
     result = sum(df, ["region", "product"], "amount")
     assert "region" in result.columns
     assert "product" in result.columns

@@ -1,6 +1,8 @@
 import importlib.util
 import json
 import logging
+import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import engine.exporter as exporter
@@ -36,31 +38,34 @@ def _log_file_name(output_folder: Path) -> str:
     return "pipeline-<unknown>.log"
 
 
-def _run_query(name: str, query_file: Path, output_folder: Path, log: logging.Logger) -> tuple[str, str | None]:
+def _run_query(queries_dir_str: str, name: str, output_folder_str: str) -> tuple[str, str | None]:
+    """Top-level function (picklable) — runs a single query in its own process."""
+    queries_dir = Path(queries_dir_str)
+    output_folder = Path(output_folder_str)
+    query_file = queries_dir / name / "query.py"
+
+    log = logging.getLogger("pipeline")
     log.info("starting query %s", name)
     try:
         module = _load_query_module(name, query_file)
 
         if not hasattr(module, "load"):
-            reason = f"query.py is missing required function 'load'"
-            log.error("query %s failed: %s", name, reason)
-            return "failed", reason
+            reason = "query.py is missing required function 'load'"
+            return "failed", reason, None
 
         if not hasattr(module, "run"):
-            reason = f"query.py is missing required function 'run'"
-            log.error("query %s failed: %s", name, reason)
-            return "failed", reason
+            reason = "query.py is missing required function 'run'"
+            return "failed", reason, None
 
         data = module.load()
         sheets = module.run(data)
         exporter.export(sheets, output_folder, filename=name)
-        log.info("query %s ok", name)
-        return "ok", None
+        return "ok", None, None
 
     except Exception as e:
+        tb = traceback.format_exc()
         reason = f"{type(e).__name__}: {e}"
-        log.exception("query %s failed: %s", name, reason)
-        return "failed", reason
+        return "failed", reason, tb
 
 
 def _write_summary(output_folder: Path, results: dict[str, tuple[str, str | None]]) -> None:
@@ -88,15 +93,29 @@ def run_all(queries_dir: str | Path, output_folder: str | Path) -> int:
     discovered = _discover_queries(queries_dir)
     results: dict[str, tuple[str, str | None]] = {}
 
-    for name, query_file in discovered:
-        status, reason = _run_query(name, query_file, output_folder, log)
-        results[name] = (status, reason)
+    with ProcessPoolExecutor() as executor:
+        futures = {
+            executor.submit(_run_query, str(queries_dir), name, str(output_folder)): name
+            for name, _ in discovered
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                status, reason, tb = future.result()
+            except Exception as exc:
+                status, reason, tb = "failed", f"{type(exc).__name__}: {exc}", None
+            results[name] = (status, reason)
 
-        if status == "ok":
-            print(f"[OK] {name}")
-        else:
-            log_filename = _log_file_name(output_folder)
-            print(f"[FAILED] {name} — see logs/{log_filename}")
+            if status == "ok":
+                log.info("query %s ok", name)
+                print(f"[OK] {name}")
+            else:
+                if tb:
+                    log.error("query %s failed: %s\n%s", name, reason, tb)
+                else:
+                    log.error("query %s failed: %s", name, reason)
+                log_filename = _log_file_name(output_folder)
+                print(f"[FAILED] {name} — see logs/{log_filename}")
 
     _write_summary(output_folder, results)
 
@@ -120,13 +139,18 @@ def run_one(queries_dir: str | Path, query_name: str, output_folder: str | Path)
         _write_summary(output_folder, {query_name: ("failed", reason)})
         return 1
 
-    status, reason = _run_query(query_name, query_file, output_folder, log)
+    status, reason, tb = _run_query(str(queries_dir), query_name, str(output_folder))
     _write_summary(output_folder, {query_name: (status, reason)})
 
     if status == "ok":
+        log.info("query %s ok", query_name)
         print(f"[OK] {query_name}")
         return 0
     else:
+        if tb:
+            log.error("query %s failed: %s\n%s", query_name, reason, tb)
+        else:
+            log.error("query %s failed: %s", query_name, reason)
         log_filename = _log_file_name(output_folder)
         print(f"[FAILED] {query_name} — see logs/{log_filename}")
         return 1

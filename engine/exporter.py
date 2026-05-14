@@ -1,4 +1,3 @@
-import decimal
 import uuid
 from pathlib import Path
 
@@ -22,24 +21,15 @@ def _validate_sheet_name(name: str) -> None:
 
 
 def _decimal_places_for_column(col: pl.Series) -> int:
-    sample = [v for v in col if isinstance(v, decimal.Decimal)][:10]
-    if not sample:
-        return 2
-    max_places = 0
-    for value in sample:
-        sign, digits, exponent = value.as_tuple()
-        if exponent < 0:
-            max_places = max(max_places, -exponent)
-    return max_places if max_places > 0 else 2
+    dtype = col.dtype
+    if isinstance(dtype, pl.Decimal):
+        scale = dtype.scale
+        return scale if scale is not None else 2
+    return 2
 
 
 def _is_decimal_column(col: pl.Series) -> bool:
-    if col.dtype != pl.Object:
-        return False
-    for value in col:
-        if value is not None:
-            return isinstance(value, decimal.Decimal)
-    return False
+    return isinstance(col.dtype, pl.Decimal)
 
 
 def export(sheets: dict[str, pl.DataFrame], output_folder: str | Path, filename: str) -> None:
@@ -71,14 +61,16 @@ def export(sheets: dict[str, pl.DataFrame], output_folder: str | Path, filename:
 
         ws.append(list(df.columns))
 
-        for row_tuple in df.iter_rows():
-            row_data = []
-            for col_idx, value in enumerate(row_tuple):
-                if col_idx in decimal_columns and isinstance(value, decimal.Decimal):
-                    row_data.append(float(value))
-                else:
-                    row_data.append(value)
-            ws.append(row_data)
+        # Cast Decimal columns to Float64 for openpyxl (which needs numeric scalars)
+        df_export = df
+        for col_idx, col_name in enumerate(df.columns):
+            if col_idx in decimal_columns:
+                df_export = df_export.with_columns(
+                    pl.col(col_name).cast(pl.Float64)
+                )
+
+        for row_tuple in df_export.iter_rows():
+            ws.append(list(row_tuple))
 
         if decimal_columns:
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row):

@@ -2,11 +2,10 @@ import json
 import os
 from pathlib import Path
 
-import openpyxl
 import polars as pl
-from openpyxl.utils import range_boundaries
 
 _project_root: Path | None = None
+_config_cache: dict[str, dict] = {}
 
 
 def _find_project_root() -> Path:
@@ -28,59 +27,32 @@ def _load_config() -> dict:
         config_path = Path(env_path)
     else:
         config_path = _find_project_root() / "config.json"
-    with config_path.open(encoding="utf-8") as f:
-        return json.load(f)
+    key = str(config_path.resolve())
+    if key not in _config_cache:
+        with config_path.open(encoding="utf-8") as f:
+            _config_cache[key] = json.load(f)
+    return _config_cache[key]
+
+
+def _get_source_path(section: str, source_name: str) -> str:
+    config = _load_config()
+    if source_name not in config.get(section, {}):
+        raise KeyError(
+            f"'{source_name}' not found in '{section}' in config.json"
+        )
+    return config[section][source_name]
 
 
 def _read_csv_path(path: str | Path) -> pl.DataFrame:
     return pl.read_csv(path)
 
 
-def _read_excel_path(path: str | Path, sheet_or_table: str) -> pl.DataFrame:
-    wb = openpyxl.load_workbook(path, data_only=True)
-
-    if sheet_or_table in wb.sheetnames:
-        ws = wb[sheet_or_table]
-        rows = list(ws.values)
-        if not rows:
-            return pl.DataFrame()
-        headers = [str(h) if h is not None else f"col_{i}" for i, h in enumerate(rows[0])]
-        data = {h: [row[i] for row in rows[1:]] for i, h in enumerate(headers)}
-        return pl.DataFrame(data)
-
-    for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        for table_name, ref in ws.tables.items():
-            if table_name == sheet_or_table:
-                min_col, min_row, max_col, max_row = range_boundaries(ref)
-                rows = list(
-                    ws.iter_rows(
-                        min_row=min_row,
-                        max_row=max_row,
-                        min_col=min_col,
-                        max_col=max_col,
-                        values_only=True,
-                    )
-                )
-                if not rows:
-                    return pl.DataFrame()
-                headers = [str(h) if h is not None else f"col_{i}" for i, h in enumerate(rows[0])]
-                data = {h: [row[i] for row in rows[1:]] for i, h in enumerate(headers)}
-                return pl.DataFrame(data)
-
-    raise KeyError(
-        f"'{sheet_or_table}' is not a sheet name or table name in '{path}'"
-    )
+def _read_excel_path(path: str | Path, sheet_name: str) -> pl.DataFrame:
+    return pl.read_excel(path, sheet_name=sheet_name, engine="calamine")
 
 
 def read_excel(source_name: str, sheet_or_table: str) -> pl.DataFrame:
-    config = _load_config()
-    section = "excel_sources"
-    if source_name not in config.get(section, {}):
-        raise KeyError(
-            f"'{source_name}' not found in '{section}' in config.json"
-        )
-    path = config[section][source_name]
+    path = _get_source_path("excel_sources", source_name)
     return _read_excel_path(path, sheet_or_table)
 
 
@@ -97,24 +69,12 @@ def _read_jsonl_path(path: str | Path) -> pl.DataFrame:
 
 
 def read_jsonl(source_name: str) -> pl.DataFrame:
-    config = _load_config()
-    section = "jsonl_sources"
-    if source_name not in config.get(section, {}):
-        raise KeyError(
-            f"'{source_name}' not found in '{section}' in config.json"
-        )
-    path = config[section][source_name]
+    path = _get_source_path("jsonl_sources", source_name)
     return _read_jsonl_path(path)
 
 
 def read_csv(source_name: str) -> pl.DataFrame:
-    config = _load_config()
-    section = "csv_sources"
-    if source_name not in config.get(section, {}):
-        raise KeyError(
-            f"'{source_name}' not found in '{section}' in config.json"
-        )
-    path = config[section][source_name]
+    path = _get_source_path("csv_sources", source_name)
     return _read_csv_path(path)
 
 

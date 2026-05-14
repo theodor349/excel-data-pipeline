@@ -1,5 +1,4 @@
 import datetime
-from decimal import Decimal, ROUND_HALF_UP
 
 import polars as pl
 
@@ -13,15 +12,8 @@ def to_int(df: pl.DataFrame, column: str) -> pl.DataFrame:
 
 
 def to_decimal(df: pl.DataFrame, column: str, places: int = 2) -> pl.DataFrame:
-    quantizer = Decimal(10) ** -places
-
-    def _convert(value):
-        if value is None:
-            return None
-        return Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
-
     return df.with_columns(
-        pl.col(column).map_elements(_convert, return_dtype=pl.Object)
+        pl.col(column).cast(pl.String).cast(pl.Decimal(scale=places))
     )
 
 

@@ -45,12 +45,23 @@ def _cells_equal(actual, expected) -> bool:
         return expected is None or (isinstance(expected, float) and math.isnan(expected))
     if expected is None or (isinstance(expected, float) and math.isnan(expected)):
         return False
-    # Decimal vs float/int: coerce expected to Decimal via str() so plain CSV
-    # values can compare exactly against Decimal-typed query output.
-    if isinstance(actual, Decimal) and isinstance(expected, (int, float)):
-        return actual == Decimal(str(expected))
-    if isinstance(expected, Decimal) and isinstance(actual, (int, float)):
-        return Decimal(str(actual)) == expected
+    # Decimal vs numeric/string: coerce to Decimal for exact comparison.
+    if isinstance(actual, Decimal):
+        if isinstance(expected, (int, float)):
+            return actual == Decimal(str(expected))
+        if isinstance(expected, str):
+            try:
+                return actual == Decimal(expected)
+            except Exception:
+                return False
+    if isinstance(expected, Decimal):
+        if isinstance(actual, (int, float)):
+            return Decimal(str(actual)) == expected
+        if isinstance(actual, str):
+            try:
+                return Decimal(actual) == expected
+            except Exception:
+                return False
     if isinstance(actual, float) and isinstance(expected, float):
         return abs(actual - expected) <= _FLOAT_TOLERANCE
     if isinstance(actual, datetime.date) and isinstance(expected, str):

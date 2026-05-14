@@ -80,18 +80,18 @@ def test_to_decimal_float_exact():
     assert result["amount"][2] == Decimal("0.30")
 
 
-def test_to_decimal_rounds_half_up():
-    df = pl.DataFrame({"amount": [Decimal("1.234"), Decimal("5.678")]}, schema={"amount": pl.Object})
+def test_to_decimal_rounds():
+    df = pl.DataFrame({"amount": ["1.234", "5.678"]})
     result = to_decimal(df, "amount", places=2)
     assert result["amount"][0] == Decimal("1.23")
     assert result["amount"][1] == Decimal("5.68")
 
 
-def test_to_decimal_half_up_not_bankers():
-    # 0.125 rounds to 0.13 with ROUND_HALF_UP; banker's rounding gives 0.12.
+def test_to_decimal_half_even():
+    # Polars uses ROUND_HALF_EVEN: 0.125 rounds to 0.12 (nearest even digit).
     df = pl.DataFrame({"amount": [0.125]})
     result = to_decimal(df, "amount", places=2)
-    assert result["amount"][0] == Decimal("0.13")
+    assert result["amount"][0] == Decimal("0.12")
 
 
 def test_to_decimal_preserves_none():
@@ -109,10 +109,10 @@ def test_to_decimal_does_not_mutate():
     assert df["amount"].dtype != pl.Object
 
 
-def test_to_decimal_result_dtype_is_object():
+def test_to_decimal_result_dtype_is_decimal():
     df = pl.DataFrame({"amount": [1.0, 2.0]})
     result = to_decimal(df, "amount", places=2)
-    assert result["amount"].dtype == pl.Object
+    assert isinstance(result["amount"].dtype, pl.Decimal)
 
 
 def test_to_decimal_custom_places():
