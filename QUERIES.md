@@ -9,12 +9,18 @@ A query is one folder under `queries/` that produces **one table**. Inside the f
 ```
 queries/sales_by_region/
 ├── query.py        # the actual transformation logic — returns one table
-├── test.py         # tells the framework which fixture files to use
+├── test.py         # lists the test cases (fixtures + expected output)
 └── testData/
-    ├── sales.csv               # one fixture per source the query loads
-    ├── regions.csv
-    └── expected_sales_by_region.csv   # what the output table should look like
+    └── happy_path/             # one folder per test case
+        ├── sales.csv           # one fixture per source the query loads
+        ├── regions.csv
+        └── expected.csv        # what the output table should look like
 ```
+
+Each test case gets its own folder under `testData/`. The folder holds that
+case's input fixtures plus an `expected.csv`, so everything for one case lives
+together. A query with several cases has several folders
+(`testData/happy_path/`, `testData/includes_refunds/`, …).
 
 A query's table only becomes a file (xlsx or csv) when you list it in
 `exports.json` (see "Exporting", below). Queries that aren't listed there don't
@@ -36,6 +42,55 @@ joining several sources together. `queries/region_base/` +
    uv run python run.py --query <query_name> --test-only
    ```
    The output is `[OK] <query_name>` or a list of cell-level mismatches.
+
+### What `test.py` looks like
+
+`test.py` defines `TESTS`, a list of test cases. Each case names the fixtures to
+feed the query and the expected output to check against:
+
+```python
+TESTS = [
+    {
+        "name": "Happy Path",
+        "FIXTURES": {
+            "sales": "testData/happy_path/sales.csv",  # one entry per source the query loads
+        },
+        "EXPECTED": "testData/happy_path/expected.csv",
+    },
+]
+```
+
+- **`name`** is just a label — it shows up in the test report so you can tell
+  which case failed.
+- **`FIXTURES`** maps each source name to a small CSV that stands in for the real
+  data.
+- **`EXPECTED`** is the one CSV holding the output you computed by hand.
+
+Put each case's files in their own `testData/<case>/` folder (the folder name is
+yours to choose — make it describe the case).
+
+You can list **more than one case** to check the same query against several
+situations — a normal month, an empty input, a month with refunds, and so on.
+Each case gets its own folder, fixtures, and expected file. Every case must pass
+or the query is reported as failed:
+
+```python
+TESTS = [
+    {
+        "name": "Happy Path",
+        "FIXTURES": {"sales": "testData/happy_path/sales.csv"},
+        "EXPECTED": "testData/happy_path/expected.csv",
+    },
+    {
+        "name": "Includes Refunds",
+        "FIXTURES": {"sales": "testData/includes_refunds/sales.csv"},
+        "EXPECTED": "testData/includes_refunds/expected.csv",
+    },
+]
+```
+
+Compute the expected output for **each** case by hand — the same
+non-negotiable rule applies to every test.
 
 ## Exporting — turning a query into a file
 
@@ -76,10 +131,15 @@ its own query and let the others reference it. The shared query is a
    ```
    The framework runs `region_base` first and hands its table to you in `data`,
    under the same name. (It's passed in memory, so Decimal money stays exact.)
-3. In the dependent query's `test.py`, supply the component's output as a **canned fixture** — list it in `FIXTURES` under the dependency name:
+3. In the dependent query's `test.py`, supply the component's output as a **canned fixture** — list it in a test case's `FIXTURES` under the dependency name:
    ```python
-   FIXTURES = { "region_base": "testData/region_base.csv" }
-   EXPECTED = "testData/expected_region_summary.csv"
+   TESTS = [
+       {
+           "name": "Happy Path",
+           "FIXTURES": {"region_base": "testData/happy_path/region_base.csv"},
+           "EXPECTED": "testData/happy_path/expected.csv",
+       },
+   ]
    ```
    You (or the agent) create `region_base.csv` as a small, representative sample
    of what `region_base` produces. The component is **not** re-run during the

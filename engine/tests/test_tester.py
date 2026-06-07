@@ -36,8 +36,11 @@ def test_passing_query(tmp_path, capsys):
                 return data["src"].with_columns((pl.col("x") * 2).alias("y"))
         """,
         test_py="""
-            FIXTURES = {"src": "testData/src.csv"}
-            EXPECTED = "testData/expected.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {"src": "testData/src.csv"},
+                "EXPECTED": "testData/expected.csv",
+            }]
         """,
         data_files={
             "src.csv": "x\n1\n2\n3\n",
@@ -61,8 +64,11 @@ def test_failing_query_shows_cell_mismatch(tmp_path, capsys):
                 return data["src"].with_columns((pl.col("x") * 2).alias("y"))
         """,
         test_py="""
-            FIXTURES = {"src": "testData/src.csv"}
-            EXPECTED = "testData/expected.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {"src": "testData/src.csv"},
+                "EXPECTED": "testData/expected.csv",
+            }]
         """,
         data_files={
             "src.csv": "x\n1\n2\n",
@@ -89,8 +95,11 @@ def test_dependency_supplied_as_fixture(tmp_path, capsys):
                 return data["base"].with_columns((pl.col("v") + 1).alias("w"))
         """,
         test_py="""
-            FIXTURES = {"base": "testData/base.csv"}
-            EXPECTED = "testData/expected.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {"base": "testData/base.csv"},
+                "EXPECTED": "testData/expected.csv",
+            }]
         """,
         data_files={
             "base.csv": "v\n10\n20\n",
@@ -114,8 +123,11 @@ def test_dependency_without_fixture_is_hard_error(tmp_path, capsys):
             def run(data): return data["base"]
         """,
         test_py="""
-            FIXTURES = {}
-            EXPECTED = "testData/expected.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {},
+                "EXPECTED": "testData/expected.csv",
+            }]
         """,
         data_files={"expected.csv": "v\n1\n"},
     )
@@ -129,7 +141,33 @@ def test_dependency_without_fixture_is_hard_error(tmp_path, capsys):
 def test_expected_must_be_single_path(tmp_path, capsys):
     _make_query(
         tmp_path,
-        "olddict",
+        "baddict",
+        query_py="""
+            import polars as pl
+            def load(): raise RuntimeError
+            def run(data): return pl.DataFrame({"v": [1]})
+        """,
+        test_py="""
+            TESTS = [{
+                "name": "dict EXPECTED",
+                "FIXTURES": {},
+                "EXPECTED": {"Out": "testData/exp.csv"},
+            }]
+        """,
+        data_files={"exp.csv": "v\n1\n"},
+    )
+    rc = run_tests_one(tmp_path, "baddict")
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "EXPECTED" in out
+
+
+def test_missing_tests_is_hard_error(tmp_path, capsys):
+    # The old single-test format (top-level FIXTURES/EXPECTED) is no longer
+    # accepted — test.py must define a TESTS list.
+    _make_query(
+        tmp_path,
+        "oldformat",
         query_py="""
             import polars as pl
             def load(): raise RuntimeError
@@ -137,14 +175,113 @@ def test_expected_must_be_single_path(tmp_path, capsys):
         """,
         test_py="""
             FIXTURES = {}
-            EXPECTED = {"Out": "testData/exp.csv"}
+            EXPECTED = "testData/exp.csv"
         """,
         data_files={"exp.csv": "v\n1\n"},
     )
-    rc = run_tests_one(tmp_path, "olddict")
+    rc = run_tests_one(tmp_path, "oldformat")
     out = capsys.readouterr().out
     assert rc == 1
-    assert "EXPECTED" in out
+    assert "TESTS" in out
+
+
+def test_empty_tests_list_is_hard_error(tmp_path, capsys):
+    _make_query(
+        tmp_path,
+        "emptytests",
+        query_py="""
+            import polars as pl
+            def load(): raise RuntimeError
+            def run(data): return pl.DataFrame({"v": [1]})
+        """,
+        test_py="""
+            TESTS = []
+        """,
+        data_files={"exp.csv": "v\n1\n"},
+    )
+    rc = run_tests_one(tmp_path, "emptytests")
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "TESTS" in out
+
+
+def test_multiple_tests_all_pass(tmp_path, capsys):
+    _make_query(
+        tmp_path,
+        "multi",
+        query_py="""
+            import polars as pl
+            def load(): raise RuntimeError
+            def run(data):
+                return data["src"].with_columns((pl.col("x") * 2).alias("y"))
+        """,
+        test_py="""
+            TESTS = [
+                {
+                    "name": "Happy Path",
+                    "FIXTURES": {"src": "testData/happy/src.csv"},
+                    "EXPECTED": "testData/happy/expected.csv",
+                },
+                {
+                    "name": "Negatives",
+                    "FIXTURES": {"src": "testData/neg/src.csv"},
+                    "EXPECTED": "testData/neg/expected.csv",
+                },
+            ]
+        """,
+        data_files={
+            "happy/src.csv": "x\n1\n2\n",
+            "happy/expected.csv": "x,y\n1,2\n2,4\n",
+            "neg/src.csv": "x\n-1\n-3\n",
+            "neg/expected.csv": "x,y\n-1,-2\n-3,-6\n",
+        },
+    )
+    rc = run_tests_one(tmp_path, "multi")
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    assert "[OK] multi" in out
+
+
+def test_multiple_tests_one_fails_reports_named_case(tmp_path, capsys):
+    # Two cases share one query; only the second has wrong expected data. The
+    # failing case is identified by its name, and the run fails overall.
+    _make_query(
+        tmp_path,
+        "multi",
+        query_py="""
+            import polars as pl
+            def load(): raise RuntimeError
+            def run(data):
+                return data["src"].with_columns((pl.col("x") * 2).alias("y"))
+        """,
+        test_py="""
+            TESTS = [
+                {
+                    "name": "Happy Path",
+                    "FIXTURES": {"src": "testData/happy/src.csv"},
+                    "EXPECTED": "testData/happy/expected.csv",
+                },
+                {
+                    "name": "Broken Case",
+                    "FIXTURES": {"src": "testData/broken/src.csv"},
+                    "EXPECTED": "testData/broken/expected.csv",
+                },
+            ]
+        """,
+        data_files={
+            "happy/src.csv": "x\n1\n2\n",
+            "happy/expected.csv": "x,y\n1,2\n2,4\n",
+            "broken/src.csv": "x\n5\n",
+            "broken/expected.csv": "x,y\n5,999\n",
+        },
+    )
+    rc = run_tests_one(tmp_path, "multi")
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "[FAILED] multi" in out
+    assert "Broken Case" in out
+    # The passing case's name should not appear in the mismatch lines.
+    assert "Happy Path" not in out
 
 
 def test_decimal_money_round_trip(tmp_path, capsys):
@@ -158,8 +295,11 @@ def test_decimal_money_round_trip(tmp_path, capsys):
                 return to_decimal(data["src"], "amount", places=2)
         """,
         test_py="""
-            FIXTURES = {"src": "testData/src.csv"}
-            EXPECTED = "testData/expected.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {"src": "testData/src.csv"},
+                "EXPECTED": "testData/expected.csv",
+            }]
         """,
         data_files={
             "src.csv": "amount\n100.50\n200.25\n",
@@ -181,8 +321,11 @@ def test_test_all_returns_one_if_any_fail(tmp_path, capsys):
             def run(data): return pl.DataFrame({"v": [1]})
         """,
         test_py="""
-            FIXTURES = {}
-            EXPECTED = "testData/exp.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {},
+                "EXPECTED": "testData/exp.csv",
+            }]
         """,
         data_files={"exp.csv": "v\n1\n"},
     )
@@ -195,8 +338,11 @@ def test_test_all_returns_one_if_any_fail(tmp_path, capsys):
             def run(data): return pl.DataFrame({"v": [1]})
         """,
         test_py="""
-            FIXTURES = {}
-            EXPECTED = "testData/exp.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {},
+                "EXPECTED": "testData/exp.csv",
+            }]
         """,
         data_files={"exp.csv": "v\n2\n"},
     )
@@ -217,8 +363,11 @@ def test_test_all_returns_zero_when_all_pass(tmp_path, capsys):
             def run(data): return pl.DataFrame({"v": [1]})
         """,
         test_py="""
-            FIXTURES = {}
-            EXPECTED = "testData/exp.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {},
+                "EXPECTED": "testData/exp.csv",
+            }]
         """,
         data_files={"exp.csv": "v\n1\n"},
     )
@@ -245,8 +394,11 @@ def test_load_is_never_called(tmp_path, capsys):
                 return pl.DataFrame({"v": [1]})
         """,
         test_py="""
-            FIXTURES = {}
-            EXPECTED = "testData/exp.csv"
+            TESTS = [{
+                "name": "Happy Path",
+                "FIXTURES": {},
+                "EXPECTED": "testData/exp.csv",
+            }]
         """,
         data_files={"exp.csv": "v\n1\n"},
     )
