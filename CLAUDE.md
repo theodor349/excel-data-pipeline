@@ -23,9 +23,12 @@ You own everything outside `queries/`. Typical tasks: implementing a new loader,
 
 The user describes a reporting need ("I need to summarize sales by region for FY 2026"). Your job is to author a query inside `queries/`. The end user is non-technical — they will read your output, so favor clarity over cleverness.
 
-- Touch only the new `queries/<query_name>/` folder.
+- Touch only the new `queries/<query_name>/` folder, plus an entry in `exports.json` if the query should produce an output file.
 - Never modify `engine/` or `functions/` to make a query work — if a function is missing, switch to developer mode and add it as a separate, tested change first.
 - `query.py` must split `load()` (sources only) from `run(data)` (transforms only). The test runner depends on this split to substitute fixtures for real sources.
+- `run(data)` returns a **single** DataFrame. To reuse one query inside another, declare `DEPENDS_ON = ["other_query"]`; the engine injects that query's output table into `data` under its name (in memory, so `Decimal` is preserved). A `DEPENDS_ON` name must not collide with a `load()` source key. Adding a dependency does **not** change the two-mode rules — composing queries is still Mode 2.
+- A query runs only if it is reachable from `exports.json` (directly or via another query's `DEPENDS_ON`). "Component" vs "deliverable" is decided by `exports.json` alone — no per-query flag.
+- In `test.py`: `EXPECTED` is a single file path; `FIXTURES` covers real sources **and** every `DEPENDS_ON` dependency (as a canned upstream-output CSV — dependencies are never re-run in tests).
 - Use named sources from `config.json` (e.g. `read_excel("sales", "Sheet1")`) — never raw file paths.
 - Write small CSV fixtures (10–20 rows) into `testData/`.
 - **Do not compute the expected output yourself.** Ask the user to compute it (in Excel, by hand, or against a known-good prior run) and only then encode their values into the expected CSV. Otherwise the test just proves the query agrees with itself, which is worthless for finance reconciliation.
@@ -39,6 +42,8 @@ The user describes a reporting need ("I need to summarize sales by region for FY
 - **Round half-up, not banker's.** Finance convention. Already enforced in `to_decimal` and `avg`; preserve it.
 - **`run(data)` never calls loader functions.** All I/O happens in `load()`; transforms operate on the `data` dict only. The tester relies on this to bypass real sources.
 - **`config.json` is gitignored.** Don't commit it. Use `config.example.json` as the shared reference. Never put real credentials in code or examples.
+- **`exports.json` is committed.** It is structure, not secrets — it declares which queries become which output files. It is the only switch that makes a query run; queries are never exported by default. Validate it before any run (the end user edits it).
+- **Query references are in-memory and Decimal-safe.** `DEPENDS_ON` outputs are passed between queries as live DataFrames, never round-tripped through a file, so `Decimal` precision is preserved. The new CSV writer renders `Decimal` as exact strings; xlsx is float64 + Decimal display format (Excel has no decimal type). If you touch the exporter, keep a precision regression test for **both** writers.
 - **Read-only on SQL.** `read_sql` is the only DB function and it's only ever called for SELECTs. Don't add write paths.
 
 ## Stack
@@ -63,12 +68,15 @@ uv run python run.py --query example --test-only
 
 ```
 engine/      # framework — developer mode only
-  loader.py exporter.py runner.py tester.py validator.py logger.py
+  loader.py exporter.py export_config.py runner.py tester.py validator.py logger.py
 functions/   # shared vocabulary — developer mode (extend over time)
   aggregations.py transforms.py joins.py
 queries/     # user mode — one folder per query
-  example/   # reference query, demonstrates every feature
+  example/           # reference query, demonstrates every feature
+  region_base/       # reference COMPONENT query (not exported; only depended upon)
+  region_summary/    # reference DELIVERABLE that DEPENDS_ON region_base
 run.py       # CLI entry point
+exports.json         # committed — which queries become which output files
 config.example.json  # shared reference; real config.json is gitignored
 ```
 

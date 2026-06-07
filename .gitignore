@@ -19,6 +19,9 @@ venv/
 .coverage
 htmlcov/
 
+# Claude Code local state
+.claude/
+
 # Editor / OS
 .DS_Store
 .idea/

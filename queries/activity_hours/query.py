@@ -60,4 +60,4 @@ def run(data):
     result = result.sort("Hours", descending=True)
     result = keep_columns(result, ["Category", "Activity", "Hours", "First Entry"])
 
-    return {"ActivityHours": result}
+    return result

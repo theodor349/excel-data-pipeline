@@ -15,7 +15,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--test-only", action="store_true", help="Run fixture tests, no export, no SQL/Excel I/O")
 
     args = parser.parse_args(argv)
-    queries_dir = Path(__file__).resolve().parent / "queries"
+    repo_root = Path(__file__).resolve().parent
+    queries_dir = repo_root / "queries"
+    exports_path = repo_root / "exports.json"
 
     if args.test_only:
         if args.all:
@@ -26,8 +28,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--output is required for non-test runs")
 
     if args.all:
-        return run_all(queries_dir, args.output)
-    return run_one(queries_dir, args.query, args.output)
+        return run_all(queries_dir, args.output, exports_path)
+    return run_one(queries_dir, args.query, args.output, exports_path)
 
 
 if __name__ == "__main__":

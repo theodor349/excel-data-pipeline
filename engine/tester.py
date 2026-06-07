@@ -71,16 +71,16 @@ def _cells_equal(actual, expected) -> bool:
     return actual == expected
 
 
-def _compare(actual: pl.DataFrame, expected: pl.DataFrame, sheet: str) -> list[str]:
+def _compare(actual: pl.DataFrame, expected: pl.DataFrame, label: str) -> list[str]:
     mismatches = []
     if len(actual) != len(expected):
         mismatches.append(
-            f'  sheet "{sheet}": row count: expected {len(expected)}, actual {len(actual)}'
+            f'  query "{label}": row count: expected {len(expected)}, actual {len(actual)}'
         )
         return mismatches
     if list(actual.columns) != list(expected.columns):
         mismatches.append(
-            f'  sheet "{sheet}": columns: expected {list(expected.columns)}, '
+            f'  query "{label}": columns: expected {list(expected.columns)}, '
             f"actual {list(actual.columns)}"
         )
         return mismatches
@@ -90,7 +90,7 @@ def _compare(actual: pl.DataFrame, expected: pl.DataFrame, sheet: str) -> list[s
             e = expected[col][i]
             if not _cells_equal(a, e):
                 mismatches.append(
-                    f'  sheet "{sheet}": column "{col}" row {i}: expected {e!r}, actual {a!r}'
+                    f'  query "{label}": column "{col}" row {i}: expected {e!r}, actual {a!r}'
                 )
     return mismatches
 
@@ -100,27 +100,40 @@ def _test_one_query(name: str, folder: Path, log: logging.Logger) -> tuple[str, 
     try:
         test_mod = _load_module(f"queries.{name}.test", folder / "test.py")
         fixtures = getattr(test_mod, "FIXTURES", {})
-        expected = getattr(test_mod, "EXPECTED", {})
+        expected = getattr(test_mod, "EXPECTED", None)
+
+        if not isinstance(expected, str):
+            return "failed", [
+                "  EXPECTED must be a single path string to the expected-output CSV"
+            ]
+
+        query_mod = _load_module(f"queries.{name}.query", folder / "query.py")
+
+        # DEPENDS_ON queries are supplied as canned fixtures, never re-executed —
+        # otherwise the test starts depending on the upstream query's sources.
+        depends_on = getattr(query_mod, "DEPENDS_ON", [])
+        missing = [d for d in depends_on if d not in fixtures]
+        if missing:
+            return "failed", [
+                f"  DEPENDS_ON {missing} has no matching FIXTURES entry — supply a "
+                f"canned upstream-output CSV for each dependency"
+            ]
 
         data = {}
         for source_name, rel_path in fixtures.items():
             data[source_name] = _read_fixture(folder / rel_path)
 
-        query_mod = _load_module(f"queries.{name}.query", folder / "query.py")
         result = query_mod.run(data)
+        if not isinstance(result, pl.DataFrame):
+            return "failed", [
+                f"  run(data) must return a single polars DataFrame, got "
+                f"{type(result).__name__}"
+            ]
 
-        all_mismatches = []
-        for sheet_name, rel_path in expected.items():
-            if sheet_name not in result:
-                all_mismatches.append(
-                    f'  sheet "{sheet_name}": missing from query output'
-                )
-                continue
-            expected_df = _read_fixture(folder / rel_path)
-            all_mismatches.extend(_compare(result[sheet_name], expected_df, sheet_name))
-
-        if all_mismatches:
-            return "failed", all_mismatches
+        expected_df = _read_fixture(folder / expected)
+        mismatches = _compare(result, expected_df, name)
+        if mismatches:
+            return "failed", mismatches
         return "ok", []
 
     except Exception as e:

@@ -1,0 +1,14 @@
+{
+  "outputs": [
+    {
+      "filename": "activity_hours.csv",
+      "format": "csv",
+      "query": "activity_hours"
+    },
+    {
+      "filename": "region_summary.csv",
+      "format": "csv",
+      "query": "region_summary"
+    }
+  ]
+}
