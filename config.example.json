@@ -9,13 +9,13 @@
     }
   },
   "excel_sources": {
-    "sales": "C:/data/sales.xlsx",
-    "products": "C:/data/products.xlsx"
+    "sales": "C:/data/sales.xlsx"
   },
-  "csv_sources": {
-    "fx_rates": "C:/data/fx_rates.csv"
-  },
+  "csv_sources": {},
   "jsonl_sources": {
-    "events": "C:/data/events.jsonl"
+    "activities": "C:/data/activities.jsonl",
+    "categories": "C:/data/categories.jsonl",
+    "entries": "C:/data/entries.jsonl",
+    "entry_activities": "C:/data/entry_activities.jsonl"
   }
 }

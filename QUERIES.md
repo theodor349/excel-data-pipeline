@@ -20,9 +20,10 @@ A query's table only becomes a file (xlsx or csv) when you list it in
 `exports.json` (see "Exporting", below). Queries that aren't listed there don't
 run on their own — they exist to be reused by other queries.
 
-Look at `queries/example/` for a working reference (named sources, fiscal year,
-Decimal money, parameter table, fixture test), and at `queries/region_base/` +
-`queries/region_summary/` for how one query reuses another.
+Look at `queries/region_base/` for a working reference (named Excel source,
+Decimal money, aggregation, fixture test) and `queries/activity_hours/` for
+joining several sources together. `queries/region_base/` +
+`queries/region_summary/` together show how one query reuses another.
 
 ## How to create a new query (with the agent)
 

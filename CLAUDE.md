@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude (or any AI agent) working in this repo. The full architecture lives in `pipeline-design-doc.md` — read it before doing non-trivial work.
+Guidance for Claude (or any AI agent) working in this repo. `README.md` covers running the pipeline; `QUERIES.md` is the query-author workflow. Read the reference queries under `queries/` before doing non-trivial work.
 
 ## What this project is
 
@@ -15,7 +15,7 @@ The project is split so a non-technical end user can maintain queries indefinite
 You own everything outside `queries/`. Typical tasks: implementing a new loader, adding a shared function (transform/aggregation/join), fixing a bug in the engine, improving error messages, writing precision regression tests.
 
 - Touch freely: `engine/`, `functions/`, `pyproject.toml`, `config.example.json`, `run.py`, top-level docs.
-- Don't touch `queries/` except `queries/example/` (the reference query) — those folders belong to the user.
+- Don't touch `queries/` except the reference queries (`region_base`, `region_summary`, `activity_hours`) — the rest belong to the user.
 - Every shared function needs a unit test under `functions/tests/`. Every engine module needs a test under `engine/tests/`.
 - Run `uv run pytest` before declaring anything done. The full suite must stay green.
 
@@ -50,7 +50,7 @@ The user describes a reporting need ("I need to summarize sales by region for FY
 
 - Package manager: `uv` (`uv sync`, `uv run pytest`, `uv run python run.py …`)
 - Python 3.11+
-- Pandas + openpyxl (Excel) + pyodbc (MSSQL) + pytest
+- Polars + openpyxl (xlsx write) + calamine (xlsx read) + pyodbc (MSSQL) + pytest
 
 ## Common commands
 
@@ -59,9 +59,9 @@ uv sync                                      # install deps
 uv run pytest                                # full test suite
 uv run pytest functions/tests/test_transforms.py -q  # one file
 uv run python run.py --all --output ./output # production run
-uv run python run.py --query example --output ./output
+uv run python run.py --query region_summary --output ./output
 uv run python run.py --all --test-only       # fixture tests, no I/O
-uv run python run.py --query example --test-only
+uv run python run.py --query region_summary --test-only
 ```
 
 ## Layout reference
@@ -72,9 +72,9 @@ engine/      # framework — developer mode only
 functions/   # shared vocabulary — developer mode (extend over time)
   aggregations.py transforms.py joins.py
 queries/     # user mode — one folder per query
-  example/           # reference query, demonstrates every feature
   region_base/       # reference COMPONENT query (not exported; only depended upon)
   region_summary/    # reference DELIVERABLE that DEPENDS_ON region_base
+  activity_hours/    # reference DELIVERABLE — jsonl sources, joins, aggregations
 run.py       # CLI entry point
 exports.json         # committed — which queries become which output files
 config.example.json  # shared reference; real config.json is gitignored
@@ -82,5 +82,5 @@ config.example.json  # shared reference; real config.json is gitignored
 
 ## When in doubt
 
-- Reach for `pipeline-design-doc.md` for architectural intent.
+- Reach for the reference queries (`region_base` + `region_summary` for composition, `activity_hours` for joins/aggregations) for worked examples.
 - If a request blurs the two modes (e.g. "this query needs a function we don't have"), do the developer-mode change as its own commit first, then the user-mode change as a follow-up. Don't entangle them.
