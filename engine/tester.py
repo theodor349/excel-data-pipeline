@@ -95,45 +95,84 @@ def _compare(actual: pl.DataFrame, expected: pl.DataFrame, label: str) -> list[s
     return mismatches
 
 
+def _run_one_case(
+    name: str,
+    folder: Path,
+    query_mod,
+    depends_on: list[str],
+    case: dict,
+    case_label: str,
+) -> tuple[str, list[str]]:
+    if not isinstance(case, dict):
+        return "failed", [f"  {case_label}: each TESTS entry must be a dict"]
+
+    fixtures = case.get("FIXTURES", {})
+    expected = case.get("EXPECTED")
+
+    if not isinstance(fixtures, dict):
+        return "failed", [f"  {case_label}: FIXTURES must be a dict of source -> path"]
+    if not isinstance(expected, str):
+        return "failed", [
+            f"  {case_label}: EXPECTED must be a single path string to the "
+            f"expected-output CSV"
+        ]
+
+    # DEPENDS_ON queries are supplied as canned fixtures, never re-executed —
+    # otherwise the test starts depending on the upstream query's sources.
+    missing = [d for d in depends_on if d not in fixtures]
+    if missing:
+        return "failed", [
+            f"  {case_label}: DEPENDS_ON {missing} has no matching FIXTURES entry — "
+            f"supply a canned upstream-output CSV for each dependency"
+        ]
+
+    data = {}
+    for source_name, rel_path in fixtures.items():
+        data[source_name] = _read_fixture(folder / rel_path)
+
+    result = query_mod.run(data)
+    if not isinstance(result, pl.DataFrame):
+        return "failed", [
+            f"  {case_label}: run(data) must return a single polars DataFrame, got "
+            f"{type(result).__name__}"
+        ]
+
+    expected_df = _read_fixture(folder / expected)
+    mismatches = _compare(result, expected_df, case_label)
+    if mismatches:
+        return "failed", mismatches
+    return "ok", []
+
+
 def _test_one_query(name: str, folder: Path, log: logging.Logger) -> tuple[str, list[str]]:
     log.info("testing query %s", name)
     try:
         test_mod = _load_module(f"queries.{name}.test", folder / "test.py")
-        fixtures = getattr(test_mod, "FIXTURES", {})
-        expected = getattr(test_mod, "EXPECTED", None)
+        tests = getattr(test_mod, "TESTS", None)
 
-        if not isinstance(expected, str):
+        if tests is None:
             return "failed", [
-                "  EXPECTED must be a single path string to the expected-output CSV"
+                "  test.py must define TESTS = [...], a list of test cases. Each case "
+                'is a dict with "name", "FIXTURES", and "EXPECTED" keys.'
             ]
+        if not isinstance(tests, list) or not tests:
+            return "failed", ["  TESTS must be a non-empty list of test-case dicts"]
 
         query_mod = _load_module(f"queries.{name}.query", folder / "query.py")
-
-        # DEPENDS_ON queries are supplied as canned fixtures, never re-executed —
-        # otherwise the test starts depending on the upstream query's sources.
         depends_on = getattr(query_mod, "DEPENDS_ON", [])
-        missing = [d for d in depends_on if d not in fixtures]
-        if missing:
-            return "failed", [
-                f"  DEPENDS_ON {missing} has no matching FIXTURES entry — supply a "
-                f"canned upstream-output CSV for each dependency"
-            ]
 
-        data = {}
-        for source_name, rel_path in fixtures.items():
-            data[source_name] = _read_fixture(folder / rel_path)
+        all_mismatches = []
+        for i, case in enumerate(tests):
+            case_name = case.get("name") if isinstance(case, dict) else None
+            case_label = f'{name} / {case_name or f"test {i}"}'
+            status, mismatches = _run_one_case(
+                name, folder, query_mod, depends_on, case, case_label
+            )
+            if status != "ok":
+                all_mismatches.extend(mismatches)
 
-        result = query_mod.run(data)
-        if not isinstance(result, pl.DataFrame):
-            return "failed", [
-                f"  run(data) must return a single polars DataFrame, got "
-                f"{type(result).__name__}"
-            ]
-
-        expected_df = _read_fixture(folder / expected)
-        mismatches = _compare(result, expected_df, name)
-        if mismatches:
-            return "failed", mismatches
+        if all_mismatches:
+            return "failed", all_mismatches
         return "ok", []
 
     except Exception as e:
