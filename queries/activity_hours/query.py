@@ -1,11 +1,11 @@
 from engine.loader import read_jsonl
 from engine.validator import expect_columns, expect_non_empty
 from functions.aggregations import min, sum
+from functions.columns import keep_columns
 from functions.joins import merge
 from functions.transforms import (
     divide,
     epoch_to_datetime,
-    keep_columns,
     rename,
     sort,
     to_date,

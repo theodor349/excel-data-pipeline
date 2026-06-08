@@ -155,10 +155,3 @@ def rename(df: pl.DataFrame, old_name: str, new_name: str) -> pl.DataFrame:
 
 def sort(df: pl.DataFrame, column, descending: bool = False) -> pl.DataFrame:
     return df.sort(column, descending=descending)
-
-
-def keep_columns(df: pl.DataFrame, columns: list) -> pl.DataFrame:
-    missing = [c for c in columns if c not in df.columns]
-    if missing:
-        raise KeyError(f"Columns not found in DataFrame: {missing}")
-    return df.select(columns)

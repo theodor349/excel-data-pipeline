@@ -74,7 +74,7 @@ uv run python run.py --query region_summary --test-only
 engine/      # framework — developer mode only
   loader.py exporter.py export_config.py runner.py tester.py validator.py logger.py settings.py
 functions/   # shared vocabulary — developer mode (extend over time)
-  aggregations.py transforms.py filters.py joins.py _rounding.py  # filters: row selection; _rounding: hardcoded half-up Decimal helper
+  aggregations.py transforms.py filters.py columns.py joins.py _rounding.py  # filters: row selection; columns: add/manage columns (incl. keep_columns); _rounding: hardcoded half-up Decimal helper
 queries/     # user mode — one folder per query
   region_base/       # reference COMPONENT query (not exported; only depended upon)
   region_summary/    # reference DELIVERABLE that DEPENDS_ON region_base
