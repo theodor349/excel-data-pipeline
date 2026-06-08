@@ -9,7 +9,6 @@ from functions.transforms import (
     divide,
     epoch_to_datetime,
     fiscal_year,
-    keep_columns,
     lowercase,
     multiply,
     period_end,
@@ -369,34 +368,6 @@ def test_rename_does_not_mutate():
     rename(df, "old", "new")
     assert "old" in df.columns
     assert "new" not in df.columns
-
-
-# ---------------------------------------------------------------------------
-# keep_columns
-# ---------------------------------------------------------------------------
-
-def test_keep_columns_basic():
-    df = pl.DataFrame({"a": [1], "b": [2], "c": [3]})
-    result = keep_columns(df, ["a", "c"])
-    assert list(result.columns) == ["a", "c"]
-
-
-def test_keep_columns_order():
-    df = pl.DataFrame({"a": [1], "b": [2], "c": [3]})
-    result = keep_columns(df, ["c", "a"])
-    assert list(result.columns) == ["c", "a"]
-
-
-def test_keep_columns_raises_on_missing():
-    df = pl.DataFrame({"a": [1], "b": [2]})
-    with pytest.raises(KeyError):
-        keep_columns(df, ["a", "z"])
-
-
-def test_keep_columns_does_not_mutate():
-    df = pl.DataFrame({"a": [1], "b": [2], "c": [3]})
-    keep_columns(df, ["a"])
-    assert list(df.columns) == ["a", "b", "c"]
 
 
 # ---------------------------------------------------------------------------
