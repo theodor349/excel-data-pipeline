@@ -1,70 +1,153 @@
 # excel-data-pipeline
 
-Python (Polars) replacement for an Excel/Power Query workflow. It reads Excel + CSV + JSONL + MSSQL, transforms data through composable queries, and writes Excel/CSV files for Power BI consumption. See `INSTALL.md` for first-time setup (non-developer, step-by-step), `QUERIES.md` for authoring queries, and `CLAUDE.md` for the architecture and conventions.
+Python pipeline for finance reporting. It replaces Excel / Power Query refresh
+steps with repeatable Python queries, then writes CSV or Excel files for Power
+BI and other reporting tools.
 
-## Architecture
+The project is designed for two kinds of work:
 
-The repo is split into **system space** (the framework — developers only) and
-**user space** (queries — maintained by the non-technical end user):
+- Query authoring: describe report logic in business terms, then keep the code
+  inside one `queries/<query_name>/` folder.
+- Framework development: extend the shared engine or the named functions that
+  queries are allowed to use.
 
-- **System space** — `engine/` (loaders, runner, exporter, tester, validator),
-  `functions/` (shared transforms/aggregations/joins), and `run.py`. This is the
-  framework; query authors never edit it.
-- **User space** — `queries/<name>/` (one folder per query) and `exports.json`
-  (which queries become output files). This is where reporting logic lives.
+For first-time setup, see `INSTALL.md`. For creating or changing report queries,
+see `QUERIES.md`.
 
-A query splits `load()` (read sources) from `run(data)` (transform only), returns
-one table, and can reuse another query via `DEPENDS_ON`. See `QUERIES.md`.
+## How It Works
 
-**Functions-only queries.** Queries are written purely from the shared vocabulary
-in `functions/` — there is no raw Polars in any query (the reference queries
-contain zero `pl.*` calls). This keeps each query readable as a recipe by a
-non-developer. The trade-off is enforced on the framework side: **every function
-in `functions/` ships with a unit test**, and money-handling functions ship with
-an exact-Decimal precision test. The readability of queries is only safe because
-the functions beneath them are verified — including any AI-authored ones.
+The repo has two main areas:
+
+- `engine/`: runner, loaders, exporter, validator, and fixture-test support.
+- `functions/`: shared named actions for filtering, joins, grouping, date work,
+  text cleanup, column selection, and Decimal-safe calculations.
+- `queries/`: one folder per report or reusable component query.
+- `exports.json`: decides which query results become output files.
+
+Each query follows the same shape:
+
+- `load()` reads source tables only.
+- `run(data)` transforms tables only.
+- `run(data)` returns one table.
+- `DEPENDS_ON = [...]` lets one query use another query result.
+
+Queries should read like Power Query steps: clean text, filter rows, join tables,
+calculate money, group totals, rename columns. Query files use named functions
+from `functions/`; they do not use raw Polars operations.
+
+## Current Example Queries
+
+The repo currently includes showcase queries that demonstrate composition:
+
+- `showcase_sales_base`: cleans order lines, removes cancelled rows, standardizes
+  names and regions, converts dates and money, and calculates net sales.
+- `showcase_product_margin`: cleans product and unit-cost data for margin work.
+- `showcase_customer_margin`: joins the two component queries, calculates gross
+  margin, groups by customer, and returns the final customer margin report.
+
+These are examples for learning and testing. Real finance reports should follow
+the same folder pattern and include small fixture tests with known-good expected
+values.
 
 ## Setup
 
-**First time / non-developer?** Follow `INSTALL.md` — a step-by-step guide from a clean
-machine (install Python, install `uv`, get the project, `uv sync`, verify, configure) for
-someone who maintains queries but isn't a developer.
-
-**Developer extending the framework** (modifying `engine/`, `functions/`, or adding
-shared transforms):
+Install dependencies:
 
 ```bash
 uv sync
+```
+
+Verify the framework tests:
+
+```bash
 uv run pytest
 ```
 
-Read `CLAUDE.md` for the full architecture and testing requirements.
-
-## Running the pipeline
+Verify all query fixture tests:
 
 ```bash
-# Run all queries
-uv run python run.py --all --output ./output
-
-# Run a single query
-uv run python run.py --query region_summary --output ./output
-
-# Run tests for queries (no I/O, no export)
 uv run python run.py --all --test-only
 ```
 
-## Configuration
+Run one query's fixture tests:
 
-Copy `config.example.json` to `config.json` and fill in real source paths and credentials. `config.json` is gitignored.
+```bash
+uv run python run.py --query showcase_customer_margin --test-only
+```
 
-`settings.json` (committed) holds finance policy: `decimal_places`, the default precision for money (currently 2; override per column with `places=`). Rounding is hardcoded **half-up** and is intentionally not configurable.
+## Running Real Data
 
-## Performance
+Create `config.json` from the template, then fill in real source paths and
+read-only database details:
 
-| Query | Python pipeline | Excel Power Query |
-|---|---|---|
-| activity_hours | 0.28 s | 4.5 s |
+```bash
+cp config.example.json config.json
+```
 
-## User guide
+On Windows PowerShell:
 
-See `QUERIES.md` for instructions on authoring new queries.
+```powershell
+Copy-Item config.example.json config.json
+```
+
+`config.json` is gitignored because it can contain local paths and credentials.
+
+Run all exported reports after `exports.json` lists the reports you want:
+
+```bash
+uv run python run.py --all --output ./output
+```
+
+Run one query against real sources. This also writes an output file when
+`exports.json` has an entry that uses that query:
+
+```bash
+uv run python run.py --query showcase_customer_margin --output ./output
+```
+
+Only queries listed in `exports.json` produce files. Reusable component queries
+can stay unexported.
+
+## Configuration Files
+
+- `config.example.json`: safe template for source names, local file paths, and
+  read-only MSSQL connection settings.
+- `config.json`: private local configuration; do not commit it.
+- `settings.json`: committed finance policy. It controls default Decimal places.
+- `exports.json`: committed run policy. It controls output filenames, formats,
+  and workbook sheets.
+
+Money is handled as Python `Decimal`. Rounding is half-up. Decimal places come
+from `settings.json` unless a function call explicitly passes `places=`.
+
+## Common Commands
+
+```bash
+# Install or refresh dependencies
+uv sync
+
+# Run framework unit tests
+uv run pytest
+
+# Run all query fixture tests, with no real source I/O
+uv run python run.py --all --test-only
+
+# Run one query fixture test
+uv run python run.py --query showcase_customer_margin --test-only
+
+# Produce output files for all queries listed in exports.json
+uv run python run.py --all --output ./output
+
+# Run one query against real sources; writes matching configured exports only
+uv run python run.py --query showcase_customer_margin --output ./output
+```
+
+## Notes For Agents
+
+Use Query Author Mode when changing report logic under `queries/<query_name>/`.
+Use Developer Mode when changing `engine/`, `functions/`, top-level docs,
+configuration templates, or the shared command runner.
+
+When adding or changing finance logic, do not invent expected output. Ask the
+domain user for known-good expected values, then encode those values in fixture
+tests.
