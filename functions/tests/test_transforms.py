@@ -7,9 +7,7 @@ import pytest
 from functions.transforms import (
     add,
     divide,
-    drop_nulls,
     epoch_to_datetime,
-    filter_rows,
     fiscal_year,
     keep_columns,
     lowercase,
@@ -399,40 +397,6 @@ def test_keep_columns_does_not_mutate():
     df = pl.DataFrame({"a": [1], "b": [2], "c": [3]})
     keep_columns(df, ["a"])
     assert list(df.columns) == ["a", "b", "c"]
-
-
-# ---------------------------------------------------------------------------
-# filter_rows
-# ---------------------------------------------------------------------------
-
-def test_filter_rows_basic():
-    df = pl.DataFrame({"status": ["active", "inactive", "active"], "val": [1, 2, 3]})
-    result = filter_rows(df, "status", "active")
-    assert len(result) == 2
-    assert result["val"].to_list() == [1, 3]
-
-
-def test_filter_rows_does_not_mutate():
-    df = pl.DataFrame({"status": ["active", "inactive"], "val": [1, 2]})
-    filter_rows(df, "status", "active")
-    assert len(df) == 2
-
-
-# ---------------------------------------------------------------------------
-# drop_nulls
-# ---------------------------------------------------------------------------
-
-def test_drop_nulls_basic():
-    df = pl.DataFrame({"name": ["alice", None, "bob"]})
-    result = drop_nulls(df, "name")
-    assert len(result) == 2
-    assert result["name"].to_list() == ["alice", "bob"]
-
-
-def test_drop_nulls_does_not_mutate():
-    df = pl.DataFrame({"name": ["alice", None]})
-    drop_nulls(df, "name")
-    assert len(df) == 2
 
 
 # ---------------------------------------------------------------------------

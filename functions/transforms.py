@@ -162,11 +162,3 @@ def keep_columns(df: pl.DataFrame, columns: list) -> pl.DataFrame:
     if missing:
         raise KeyError(f"Columns not found in DataFrame: {missing}")
     return df.select(columns)
-
-
-def filter_rows(df: pl.DataFrame, column: str, value) -> pl.DataFrame:
-    return df.filter(pl.col(column) == value)
-
-
-def drop_nulls(df: pl.DataFrame, column: str) -> pl.DataFrame:
-    return df.drop_nulls(subset=[column])
