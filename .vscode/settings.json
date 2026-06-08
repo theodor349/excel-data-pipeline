@@ -4,6 +4,8 @@
     "**/.venv": true,
     "**/__pycache__": true,
     "**/*.pyc": true,
+    "**/pyproject.toml": true,
+    "**/uv.lock": true,
     "**/venv": true
   },
   "workbench.editor.customLabels.enabled": true,
