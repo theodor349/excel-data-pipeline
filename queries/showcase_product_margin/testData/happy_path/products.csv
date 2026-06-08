@@ -1,0 +1,5 @@
+product_id,product_name,category,unit_cost
+p100, premium widget ,hardware,70.125
+P200,service bundle, services ,35.5
+p300,installation kit,hardware,180.225
+P300,installation kit duplicate,hardware,999

@@ -1,0 +1,5 @@
+order_id,customer_id,customer_name,region,order_date,fiscal_year,product_id,units,unit_price,discount,net_sales,order_size
+1001,C001,Acme Ltd,north,2025-07-15,2026,P100,4,125.26,10.01,491.03,Standard
+1002,C002,Beta Llc,south,2025-08-02,2026,P200,2,80.00,0.00,160.00,Standard
+1003,C001,Acme Ltd,north,2025-09-10,2026,P200,3,80.13,5.00,235.39,Standard
+1005,C003,Gamma Inc,west,2025-07-01,2026,P300,2,300.50,0.00,601.00,Large

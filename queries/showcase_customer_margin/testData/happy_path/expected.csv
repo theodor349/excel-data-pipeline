@@ -1,0 +1,4 @@
+Customer ID,Customer,Region,Fiscal Year,Orders,Net Sales,Gross Margin,Margin Rate,Segment,First Order,Currency
+C001,Acme Ltd,north,2026,2,726.42,339.40,0.4672,Priority,2025-07-15,USD
+C003,Gamma Inc,west,2026,1,601.00,240.54,0.4002,Standard,2025-07-01,USD
+C002,Beta Llc,south,2026,1,160.00,89.00,0.5563,Standard,2025-08-02,USD

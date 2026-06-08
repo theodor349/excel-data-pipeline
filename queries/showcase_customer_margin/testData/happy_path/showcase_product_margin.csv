@@ -1,0 +1,4 @@
+product_id,product_name,category,unit_cost,currency
+P100,Premium Widget,Hardware,70.13,USD
+P200,Service Bundle,Services,35.50,USD
+P300,Installation Kit,Hardware,180.23,USD

@@ -1,0 +1,6 @@
+order_id,customer_id,customer_name,region,order_date,product_id,units,unit_price,discount,status
+1001,C001,  acme LTD  ,N,2025-07-15,p100,4,125.255,10.005,Complete
+1002,C002,beta llc,south,2025-08-02,P200,2,80,0,Complete
+1003,C001,Acme Ltd,north,2025-09-10,p200,3,80.125,5,Complete
+1004,C003,  gamma inc,W,2025-06-20,p300,1,300,25,Cancelled
+1005,C003,gamma inc,west,2025-07-01,P300,2,300.499,0,Complete
