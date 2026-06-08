@@ -26,10 +26,20 @@ from functions.dates import (
     to_date,
     today,
 )
-
-
-def lowercase(df: pl.DataFrame, column: str) -> pl.DataFrame:
-    return df.with_columns(pl.col(column).str.to_lowercase())
+from functions.text import (
+    clean,
+    combine_columns,
+    left_chars,
+    lowercase,
+    mid_chars,
+    pad_left,
+    proper_case,
+    replace_values,
+    right_chars,
+    split_column_by_delimiter,
+    trim,
+    uppercase,
+)
 
 
 def to_int(df: pl.DataFrame, column: str) -> pl.DataFrame:

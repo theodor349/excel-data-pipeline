@@ -10,7 +10,6 @@ from functions.transforms import (
     divide,
     epoch_to_datetime,
     fiscal_year,
-    lowercase,
     multiply,
     period_end,
     rename,
@@ -25,29 +24,6 @@ from functions.transforms import (
     to_float,
     to_int,
 )
-
-
-# ---------------------------------------------------------------------------
-# lowercase
-# ---------------------------------------------------------------------------
-
-def test_lowercase_basic():
-    df = pl.DataFrame({"name": ["Alice", "BOB", "carol"]})
-    result = lowercase(df, "name")
-    assert result["name"].to_list() == ["alice", "bob", "carol"]
-
-
-def test_lowercase_preserves_nan():
-    df = pl.DataFrame({"name": ["Alice", None]})
-    result = lowercase(df, "name")
-    assert result["name"][0] == "alice"
-    assert result["name"][1] is None
-
-
-def test_lowercase_does_not_mutate():
-    df = pl.DataFrame({"name": ["Alice"]})
-    lowercase(df, "name")
-    assert df["name"][0] == "Alice"
 
 
 # ---------------------------------------------------------------------------

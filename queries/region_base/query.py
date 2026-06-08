@@ -9,7 +9,8 @@ component query: write the normalization once, reuse it everywhere.
 from engine.loader import read_excel
 from engine.validator import expect_columns, expect_non_empty
 from functions.aggregations import sum
-from functions.transforms import lowercase, sort, to_decimal
+from functions.text import lowercase
+from functions.transforms import sort, to_decimal
 
 
 def load():
