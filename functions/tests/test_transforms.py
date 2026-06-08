@@ -5,13 +5,19 @@ import polars as pl
 import pytest
 
 from functions.transforms import (
+    add,
+    divide,
     drop_nulls,
+    epoch_to_datetime,
     filter_rows,
     fiscal_year,
     keep_columns,
     lowercase,
+    multiply,
     period_end,
     rename,
+    sort,
+    subtract,
     to_date,
     to_decimal,
     to_float,
@@ -87,11 +93,25 @@ def test_to_decimal_rounds():
     assert result["amount"][1] == Decimal("5.68")
 
 
-def test_to_decimal_half_even():
-    # Polars uses ROUND_HALF_EVEN: 0.125 rounds to 0.12 (nearest even digit).
-    df = pl.DataFrame({"amount": [0.125]})
+def test_to_decimal_half_up():
+    # Finance convention is ROUND_HALF_UP (away from zero on a tie), NOT Polars'
+    # native half-even. 0.125 -> 0.13, 0.005 -> 0.01, -0.025 -> -0.03.
+    df = pl.DataFrame({"amount": ["0.125", "0.005", "-0.025"]})
     result = to_decimal(df, "amount", places=2)
-    assert result["amount"][0] == Decimal("0.12")
+    assert result["amount"].to_list() == [
+        Decimal("0.13"),
+        Decimal("0.01"),
+        Decimal("-0.03"),
+    ]
+
+
+def test_to_decimal_default_places_from_settings():
+    # places omitted -> settings.json default (2).
+    df = pl.DataFrame({"amount": ["1.239"]})
+    result = to_decimal(df, "amount")
+    assert isinstance(result["amount"].dtype, pl.Decimal)
+    assert result["amount"].dtype.scale == 2
+    assert result["amount"][0] == Decimal("1.24")
 
 
 def test_to_decimal_preserves_none():
@@ -233,6 +253,109 @@ def test_period_end_does_not_mutate():
 
 
 # ---------------------------------------------------------------------------
+# epoch_to_datetime
+# ---------------------------------------------------------------------------
+
+def test_epoch_to_datetime_ms():
+    # 1704877200000 ms since epoch == 2024-01-10 09:00:00 UTC.
+    df = pl.DataFrame({"ts": [1704877200000]})
+    result = epoch_to_datetime(df, "ts")
+    assert result["ts"].dtype == pl.Datetime(time_unit="ms")
+    assert result["ts"][0] == datetime.datetime(2024, 1, 10, 9, 0, 0)
+
+
+def test_epoch_to_datetime_does_not_mutate():
+    df = pl.DataFrame({"ts": [1704877200000]})
+    epoch_to_datetime(df, "ts")
+    assert df["ts"].dtype == pl.Int64
+
+
+# ---------------------------------------------------------------------------
+# add / subtract / multiply — exact Decimal computed columns
+# ---------------------------------------------------------------------------
+
+def _money_df():
+    return pl.DataFrame(
+        {"a": ["1.10"], "b": ["2.05"], "qty": [3]},
+        schema={"a": pl.String, "b": pl.String, "qty": pl.Int64},
+    ).with_columns(
+        pl.col("a").cast(pl.Decimal(scale=2)),
+        pl.col("b").cast(pl.Decimal(scale=2)),
+    )
+
+
+def test_add_two_columns():
+    result = add(_money_df(), "a", "b", new_column="total")
+    assert result["total"][0] == Decimal("3.15")
+    assert isinstance(result["total"].dtype, pl.Decimal)
+
+
+def test_subtract_constant():
+    result = subtract(_money_df(), "b", 0.05, new_column="net")
+    assert result["net"][0] == Decimal("2.00")
+
+
+def test_multiply_column_by_int_column():
+    result = multiply(_money_df(), "a", "qty", new_column="line")
+    assert result["line"][0] == Decimal("3.30")
+
+
+def test_multiply_no_silent_precision_loss():
+    # 1.10 * 1.05 = 1.1550. Polars' native Decimal multiply silently rounds this
+    # to 1.16; going through Python Decimal keeps it exact when places allow.
+    result = multiply(_money_df(), "a", 1.05, new_column="x", places=4)
+    assert result["x"][0] == Decimal("1.1550")
+
+
+def test_arith_null_propagates():
+    df = pl.DataFrame({"a": ["1.10", None]}).with_columns(
+        pl.col("a").cast(pl.Decimal(scale=2))
+    )
+    result = add(df, "a", 1, new_column="x")
+    assert result["x"][0] == Decimal("2.10")
+    assert result["x"][1] is None
+
+
+def test_arith_does_not_mutate():
+    df = _money_df()
+    add(df, "a", "b", new_column="total")
+    assert "total" not in df.columns
+
+
+# ---------------------------------------------------------------------------
+# divide
+# ---------------------------------------------------------------------------
+
+def test_divide_money_is_decimal_half_up():
+    # 1.10 / 7 = 0.157... -> 0.16 half-up, exact Decimal, default 2 places.
+    df = _money_df()
+    result = divide(df, "a", 7, new_column="ratio")
+    assert isinstance(result["ratio"].dtype, pl.Decimal)
+    assert result["ratio"][0] == Decimal("0.16")
+
+
+def test_divide_money_honors_places():
+    df = _money_df()
+    result = divide(df, "a", 7, new_column="ratio", places=4)
+    assert result["ratio"][0] == Decimal("0.1571")
+
+
+def test_divide_as_decimal_false_gives_float():
+    # Unit conversion (ms -> hours): non-money, plain float.
+    df = pl.DataFrame({"ms": [3600000, 1800000]})
+    result = divide(df, "ms", 3_600_000, new_column="hours", as_decimal=False)
+    assert result["hours"].dtype == pl.Float64
+    assert result["hours"][0] == pytest.approx(1.0)
+    assert result["hours"][1] == pytest.approx(0.5)
+
+
+def test_divide_does_not_mutate():
+    df = _money_df()
+    divide(df, "a", 7, new_column="ratio")
+    assert "ratio" not in df.columns
+
+
+# ---------------------------------------------------------------------------
 # rename
 # ---------------------------------------------------------------------------
 
@@ -310,3 +433,25 @@ def test_drop_nulls_does_not_mutate():
     df = pl.DataFrame({"name": ["alice", None]})
     drop_nulls(df, "name")
     assert len(df) == 2
+
+
+# ---------------------------------------------------------------------------
+# sort
+# ---------------------------------------------------------------------------
+
+def test_sort_ascending():
+    df = pl.DataFrame({"n": [3, 1, 2]})
+    result = sort(df, "n")
+    assert result["n"].to_list() == [1, 2, 3]
+
+
+def test_sort_descending():
+    df = pl.DataFrame({"n": [3, 1, 2]})
+    result = sort(df, "n", descending=True)
+    assert result["n"].to_list() == [3, 2, 1]
+
+
+def test_sort_does_not_mutate():
+    df = pl.DataFrame({"n": [3, 1, 2]})
+    sort(df, "n")
+    assert df["n"].to_list() == [3, 1, 2]

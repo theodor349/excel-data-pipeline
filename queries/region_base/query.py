@@ -9,7 +9,7 @@ component query: write the normalization once, reuse it everywhere.
 from engine.loader import read_excel
 from engine.validator import expect_columns, expect_non_empty
 from functions.aggregations import sum
-from functions.transforms import lowercase, to_decimal
+from functions.transforms import lowercase, sort, to_decimal
 
 
 def load():
@@ -26,4 +26,4 @@ def run(data):
     sales = to_decimal(sales, "amount", places=2)  # money stays Decimal
 
     base = sum(sales, "region", "amount")
-    return base.sort("region")
+    return sort(base, "region")

@@ -8,7 +8,7 @@ through a file).
 """
 
 from engine.validator import expect_columns, expect_non_empty
-from functions.transforms import rename
+from functions.transforms import rename, sort
 
 DEPENDS_ON = ["region_base"]
 
@@ -23,7 +23,7 @@ def run(data):
     expect_non_empty(base, "region_base")
     expect_columns(base, ["region", "amount"])
 
-    summary = base.sort("amount", descending=True)
+    summary = sort(base, "amount", descending=True)
     summary = rename(summary, "region", "Region")
     summary = rename(summary, "amount", "Total Sales")
     return summary

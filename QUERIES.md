@@ -151,7 +151,14 @@ its own query and let the others reference it. The shared query is a
 
 ## Things to keep in mind
 
-- **Money columns must use `to_decimal(df, "amount", places=2)`.** Do not use `to_float` for money. The framework preserves Decimal precision end-to-end; floats silently drift on large sums and break ledger reconciliation.
+- **A query is built only from the named functions.** Every step in `query.py` is a call to a shared function — `sum(...)`, `merge(...)`, `rename(...)`, `to_decimal(...)`, `sort(...)`, and so on — so the whole query reads like a recipe you can check line by line. You should never see `import polars` or `pl.something` in a query; that's the framework's job, not yours. If a report needs a step no function covers yet, that's the signal to **add a new function first** (a developer/AI task): the function gets written, gets a test, and only then does the query use it. This is what keeps the logic readable and trustworthy — every operation your reports rely on has been verified once, in isolation, with a test.
+- **Money columns must use `to_decimal(df, "amount")`.** Do not use `to_float` for money. The framework preserves Decimal precision end-to-end; floats silently drift on large sums and break ledger reconciliation. Money is rounded **half-up** (the finance convention) to the default number of decimal places set in `settings.json` (currently 2). Need a different precision for one column — say FX rates at 4 places? Pass it explicitly: `to_decimal(df, "rate", places=4)`.
+- **Computed columns use the arithmetic functions.** To build a new column from a formula, use `add`, `subtract`, `multiply`, and `divide`. Each takes a column plus either another column or a constant, and writes a new column — staying exact Decimal. Example, `(units × price) / months`:
+  ```python
+  df = multiply(df, "units", "price", new_column="ab", places=4)  # keep extra precision mid-formula
+  df = divide(df, "ab", "months", new_column="monthly")            # result rounded to 2 places, half-up
+  ```
+  Each step rounds to the default places unless you pass `places=`. For a *non-money* division (a ratio or unit conversion, e.g. milliseconds → hours), add `as_decimal=False` to get a plain number instead of money — see `activity_hours`.
 - **Return one table from `run(data)`.** Each query produces a single table; `exports.json` decides where it goes. If you need two outputs, that's two queries.
 - **Don't load files in `run(data)`.** All loading happens in `load()`; `run(data)` only transforms. This is what lets the test runner swap real sources for fixture files.
 - **Keep fixtures small.** 10–20 rows is enough — they exist to prove the logic, not to stress-test.

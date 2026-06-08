@@ -16,6 +16,14 @@ The repo is split into **system space** (the framework — developers only) and
 A query splits `load()` (read sources) from `run(data)` (transform only), returns
 one table, and can reuse another query via `DEPENDS_ON`. See `QUERIES.md`.
 
+**Functions-only queries.** Queries are written purely from the shared vocabulary
+in `functions/` — there is no raw Polars in any query (the reference queries
+contain zero `pl.*` calls). This keeps each query readable as a recipe by a
+non-developer. The trade-off is enforced on the framework side: **every function
+in `functions/` ships with a unit test**, and money-handling functions ship with
+an exact-Decimal precision test. The readability of queries is only safe because
+the functions beneath them are verified — including any AI-authored ones.
+
 ## Setup (developer)
 
 ```bash
@@ -39,6 +47,8 @@ uv run python run.py --all --test-only
 ## Configuration
 
 Copy `config.example.json` to `config.json` and fill in real source paths and credentials. `config.json` is gitignored.
+
+`settings.json` (committed) holds finance policy: `decimal_places`, the default precision for money (currently 2; override per column with `places=`). Rounding is hardcoded **half-up** and is intentionally not configurable.
 
 ## Performance
 

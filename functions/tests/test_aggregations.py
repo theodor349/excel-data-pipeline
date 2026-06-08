@@ -73,8 +73,8 @@ def test_avg_decimal_round_half_up():
     assert result["amount"][0] == Decimal("2.33")
 
 
-def test_avg_decimal_half_even():
-    """avg([0.10, 0.11]) = 0.105; Polars float mean rounds to 0.11 at scale 2."""
+def test_avg_decimal_half_up_on_tie():
+    """avg([0.10, 0.11]) = 0.105 exactly -> 0.11 with half-up (half-even -> 0.10)."""
     df = make_decimal_df(["A", "A"], [Decimal("0.10"), Decimal("0.11")])
     result = avg(df, "group", "amount")
     assert result["amount"][0] == Decimal("0.11")
