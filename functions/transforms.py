@@ -1,4 +1,3 @@
-import datetime
 import operator
 from decimal import Decimal
 
@@ -9,6 +8,23 @@ from functions._rounding import (
     quantize_down,
     quantize_up,
     resolve_places,
+)
+from functions.dates import (
+    add_days,
+    add_months,
+    date_diff_days,
+    date_month,
+    date_quarter,
+    date_year,
+    epoch_to_datetime,
+    fiscal_year,
+    now,
+    period_end,
+    start_of_month,
+    start_of_quarter,
+    start_of_year,
+    to_date,
+    today,
 )
 
 
@@ -41,66 +57,6 @@ def to_decimal(
 
 def to_float(df: pl.DataFrame, column: str) -> pl.DataFrame:
     return df.with_columns(pl.col(column).cast(pl.Float64))
-
-
-def to_date(df: pl.DataFrame, column: str, format: str | None = None) -> pl.DataFrame:
-    col = df[column]
-    if col.dtype == pl.Date:
-        return df
-    if col.dtype == pl.Datetime:
-        return df.with_columns(pl.col(column).cast(pl.Date))
-    if format is not None:
-        return df.with_columns(pl.col(column).str.to_date(format=format))
-    return df.with_columns(pl.col(column).str.to_date())
-
-
-def fiscal_year(
-    df: pl.DataFrame,
-    date_column: str,
-    fy_start_month: int = 1,
-    new_column: str = "fiscal_year",
-) -> pl.DataFrame:
-    # FY = the calendar year in which the fiscal year ends.
-    # e.g. fy_start_month=7: Jul 2025 – Jun 2026 is FY 2026.
-    if fy_start_month == 1:
-        return df.with_columns(
-            pl.col(date_column).dt.year().alias(new_column)
-        )
-    return df.with_columns(
-        (
-            pl.col(date_column).dt.year()
-            + (pl.col(date_column).dt.month() >= fy_start_month).cast(pl.Int32)
-        ).alias(new_column)
-    )
-
-
-def period_end(
-    df: pl.DataFrame,
-    date_column: str,
-    granularity: str,
-    new_column: str = "period_end",
-) -> pl.DataFrame:
-    col = pl.col(date_column)
-    if granularity == "month":
-        expr = col.dt.month_end()
-    elif granularity == "quarter":
-        # Quarter end months: 3, 6, 9, 12
-        quarter_end_month = ((col.dt.month() - 1) // 3 + 1) * 3
-        expr = pl.date(col.dt.year(), quarter_end_month, 1).dt.month_end()
-    elif granularity == "year":
-        expr = pl.date(col.dt.year(), 12, 31)
-    else:
-        raise ValueError(f"Unknown granularity: {granularity!r}. Use 'month', 'quarter', or 'year'.")
-    return df.with_columns(expr.alias(new_column))
-
-
-def epoch_to_datetime(
-    df: pl.DataFrame, column: str, unit: str = "ms"
-) -> pl.DataFrame:
-    # Interpret an integer column as time since the Unix epoch (1970-01-01).
-    # unit="ms" treats the integer as milliseconds, "us" microseconds, "ns"
-    # nanoseconds. Common for timestamps exported from web/JSON systems.
-    return df.with_columns(pl.col(column).cast(pl.Datetime(time_unit=unit)))
 
 
 # ---------------------------------------------------------------------------
