@@ -67,13 +67,43 @@ terminal once more; if it still fails, paste the error to your AI assistant.
 
 ---
 
-## 3. Get the project onto your machine
+## 3. Install Git
+
+Git is the tool used to download the project and later pull updates from GitHub. You
+can still use the zip download below, but installing Git is recommended.
+
+**Windows:**
+
+1. Go to <https://git-scm.com/download/win>.
+2. Download and run the installer.
+3. Keep the default choices unless your IT department tells you otherwise.
+4. Finish the install, then close and reopen your terminal.
+
+**Check it worked:**
+
+```powershell
+git --version
+```
+
+You should see a version number, for example `git version 2.x.x`. If you get "git is
+not recognized", close and reopen the terminal once more; if it still fails, paste the
+error to your AI assistant.
+
+> **macOS:** If Git is missing, running `git --version` usually opens Apple's installer.
+> You can also install it with Homebrew: `brew install git`.
+>
+> **Linux:** Install Git with your package manager, for example
+> `sudo apt install git` on Ubuntu/Debian.
+
+---
+
+## 4. Get the project onto your machine
 
 You need the project files in a folder on your computer. Two ways:
 
 - **Download a zip (simplest):** On the project's GitHub page, click the green **Code**
   button → **Download ZIP**. Unzip it somewhere easy to find, e.g. `Documents`.
-- **Clone with Git (if you have Git):**
+- **Clone with Git:**
   `git clone https://github.com/theodor349/excel-data-pipeline.git`. Cloning makes it
   easier to pull future updates, but the zip is fine to start.
 
@@ -86,7 +116,7 @@ should see `run.py`, `README.md`, `queries`, and `engine` in the listing.
 
 ---
 
-## 4. Install the dependencies
+## 5. Install the dependencies
 
 From the project folder, run:
 
@@ -101,7 +131,7 @@ project's dependencies change). The first run can take a minute or two.
 
 ---
 
-## 5. Verify the setup before touching real data
+## 6. Verify the setup before touching real data
 
 Run the test suite. This proves the pipeline installed correctly **without** needing
 your real data or credentials:
@@ -122,7 +152,7 @@ whole output to your AI assistant.
 
 ---
 
-## 6. Configure your data sources
+## 7. Configure your data sources
 
 The pipeline needs to know where your real files and databases are. That information
 lives in `config.json`, which is **not** included in the download (it can hold passwords,
