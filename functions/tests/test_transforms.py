@@ -5,6 +5,7 @@ import polars as pl
 import pytest
 
 from functions.transforms import (
+    absolute,
     add,
     divide,
     epoch_to_datetime,
@@ -13,6 +14,10 @@ from functions.transforms import (
     multiply,
     period_end,
     rename,
+    replace_null,
+    round,
+    round_down,
+    round_up,
     sort,
     subtract,
     to_date,
@@ -390,3 +395,141 @@ def test_sort_does_not_mutate():
     df = pl.DataFrame({"n": [3, 1, 2]})
     sort(df, "n")
     assert df["n"].to_list() == [3, 1, 2]
+
+
+# ---------------------------------------------------------------------------
+# round (half-up)
+# ---------------------------------------------------------------------------
+
+def test_round_half_up():
+    df = pl.DataFrame({"amount": [Decimal("0.125"), Decimal("0.124")]})
+    result = round(df, "amount", places=2)
+    assert result["amount"].to_list() == [Decimal("0.13"), Decimal("0.12")]
+    assert result["amount"].dtype == pl.Decimal(scale=2)
+
+
+def test_round_exact_decimal_no_float_drift():
+    # 2.675 is not exactly representable in binary; half-up on the literal -> 2.68.
+    df = pl.DataFrame({"amount": [Decimal("2.675")]})
+    result = round(df, "amount", places=2)
+    assert result["amount"].to_list() == [Decimal("2.68")]
+
+
+def test_round_defaults_to_settings_places():
+    df = pl.DataFrame({"amount": [Decimal("1.005")]})
+    result = round(df, "amount")
+    assert result["amount"].dtype == pl.Decimal(scale=2)
+    assert result["amount"].to_list() == [Decimal("1.01")]
+
+
+def test_round_new_column():
+    df = pl.DataFrame({"amount": [Decimal("1.235")]})
+    result = round(df, "amount", places=2, new_column="rounded")
+    assert result["amount"].to_list() == [Decimal("1.235")]
+    assert result["rounded"].to_list() == [Decimal("1.24")]
+
+
+def test_round_null_passthrough():
+    df = pl.DataFrame({"amount": [Decimal("0.125"), None]})
+    result = round(df, "amount", places=2)
+    assert result["amount"].to_list() == [Decimal("0.13"), None]
+
+
+def test_round_does_not_mutate():
+    df = pl.DataFrame({"amount": [Decimal("0.125")]})
+    round(df, "amount", places=2)
+    assert df["amount"].to_list() == [Decimal("0.125")]
+
+
+# ---------------------------------------------------------------------------
+# round_up (away from zero) / round_down (toward zero) — Excel semantics
+# ---------------------------------------------------------------------------
+
+def test_round_up_away_from_zero():
+    df = pl.DataFrame({"v": [Decimal("1.41"), Decimal("-1.41")]})
+    result = round_up(df, "v", places=1)
+    assert result["v"].to_list() == [Decimal("1.5"), Decimal("-1.5")]
+
+
+def test_round_down_toward_zero():
+    df = pl.DataFrame({"v": [Decimal("1.49"), Decimal("-1.49")]})
+    result = round_down(df, "v", places=1)
+    assert result["v"].to_list() == [Decimal("1.4"), Decimal("-1.4")]
+
+
+def test_round_up_does_not_mutate():
+    df = pl.DataFrame({"v": [Decimal("1.41")]})
+    round_up(df, "v", places=1)
+    assert df["v"].to_list() == [Decimal("1.41")]
+
+
+# ---------------------------------------------------------------------------
+# replace_null (coalesce)
+# ---------------------------------------------------------------------------
+
+def test_replace_null_numeric():
+    df = pl.DataFrame({"n": [1, None, 3]})
+    result = replace_null(df, "n", 0)
+    assert result["n"].to_list() == [1, 0, 3]
+
+
+def test_replace_null_string():
+    df = pl.DataFrame({"s": ["a", None]})
+    result = replace_null(df, "s", "missing")
+    assert result["s"].to_list() == ["a", "missing"]
+
+
+def test_replace_null_decimal_exact():
+    df = pl.DataFrame({"amount": [Decimal("1.50"), None]})
+    result = replace_null(df, "amount", 0)
+    assert result["amount"].dtype == pl.Decimal(scale=2)
+    assert result["amount"].to_list() == [Decimal("1.50"), Decimal("0.00")]
+
+
+def test_replace_null_decimal_fill_value_exact():
+    # A fill value with more precision than the column scale is quantized exactly.
+    df = pl.DataFrame({"amount": [Decimal("1.50"), None]})
+    result = replace_null(df, "amount", Decimal("9.005"))
+    assert result["amount"].to_list() == [Decimal("1.50"), Decimal("9.01")]
+
+
+def test_replace_null_does_not_mutate():
+    df = pl.DataFrame({"n": [1, None]})
+    replace_null(df, "n", 0)
+    assert df["n"].to_list() == [1, None]
+
+
+# ---------------------------------------------------------------------------
+# absolute
+# ---------------------------------------------------------------------------
+
+def test_absolute_int():
+    df = pl.DataFrame({"v": [-3, 2, -1]})
+    result = absolute(df, "v")
+    assert result["v"].to_list() == [3, 2, 1]
+
+
+def test_absolute_decimal_exact_and_scale():
+    df = pl.DataFrame({"variance": [Decimal("-1.50"), Decimal("2.30")]})
+    result = absolute(df, "variance")
+    assert result["variance"].dtype == pl.Decimal(scale=2)
+    assert result["variance"].to_list() == [Decimal("1.50"), Decimal("2.30")]
+
+
+def test_absolute_new_column_keeps_original():
+    df = pl.DataFrame({"variance": [Decimal("-1.50")]})
+    result = absolute(df, "variance", new_column="magnitude")
+    assert result["variance"].to_list() == [Decimal("-1.50")]
+    assert result["magnitude"].to_list() == [Decimal("1.50")]
+
+
+def test_absolute_null_passthrough():
+    df = pl.DataFrame({"v": [Decimal("-1.50"), None]})
+    result = absolute(df, "v")
+    assert result["v"].to_list() == [Decimal("1.50"), None]
+
+
+def test_absolute_does_not_mutate():
+    df = pl.DataFrame({"v": [-3, 2]})
+    absolute(df, "v")
+    assert df["v"].to_list() == [-3, 2]

@@ -4,7 +4,12 @@ from decimal import Decimal
 
 import polars as pl
 
-from functions._rounding import quantize, resolve_places
+from functions._rounding import (
+    quantize,
+    quantize_down,
+    quantize_up,
+    resolve_places,
+)
 
 
 def lowercase(df: pl.DataFrame, column: str) -> pl.DataFrame:
@@ -155,3 +160,60 @@ def rename(df: pl.DataFrame, old_name: str, new_name: str) -> pl.DataFrame:
 
 def sort(df: pl.DataFrame, column, descending: bool = False) -> pl.DataFrame:
     return df.sort(column, descending=descending)
+
+
+# ---------------------------------------------------------------------------
+# Explicit rounding — round a *result* on demand, to `places` decimals
+# (settings.json default, 2). Always goes through the exact Python `Decimal`
+# path in functions/_rounding.py, never Polars' native (half-even) Decimal cast,
+# and produces an exact Decimal column. `round` breaks ties half-up; `round_up`
+# rounds away from zero and `round_down` toward zero (Excel ROUNDUP/ROUNDDOWN).
+# Pass `new_column` to write the result to a new column instead of in place.
+# ---------------------------------------------------------------------------
+
+def _round_with(df, column, places, new_column, quantizer):
+    places = resolve_places(places)
+    target = new_column if new_column is not None else column
+    return df.with_columns(
+        pl.col(column)
+        .map_elements(
+            lambda v: quantizer(v, places),
+            return_dtype=pl.Decimal(scale=places),
+        )
+        .alias(target)
+    )
+
+
+def round(df, column, places=None, new_column=None):
+    return _round_with(df, column, places, new_column, quantize)
+
+
+def round_up(df, column, places=None, new_column=None):
+    return _round_with(df, column, places, new_column, quantize_up)
+
+
+def round_down(df, column, places=None, new_column=None):
+    return _round_with(df, column, places, new_column, quantize_down)
+
+
+def replace_null(df: pl.DataFrame, column: str, value) -> pl.DataFrame:
+    # Replace nulls in `column` with `value` (coalesce) — e.g. treat a missing
+    # amount as 0 so totals don't break. For a Decimal money column the fill is
+    # converted exactly (Decimal(str(value))) to the column's scale, never a
+    # binary float; other column types are filled with `value` as-is.
+    dtype = df.schema[column]
+    if dtype == pl.Decimal:
+        scale = dtype.scale
+        fill = quantize(value, scale)
+        return df.with_columns(
+            pl.col(column).fill_null(pl.lit(fill, dtype=pl.Decimal(scale=scale)))
+        )
+    return df.with_columns(pl.col(column).fill_null(value))
+
+
+def absolute(df: pl.DataFrame, column: str, new_column: str | None = None) -> pl.DataFrame:
+    # Absolute value (magnitude) of `column` — e.g. report variance size. Exact
+    # for Decimal money (abs neither rounds nor changes scale). Pass `new_column`
+    # to write to a new column instead of in place.
+    target = new_column if new_column is not None else column
+    return df.with_columns(pl.col(column).abs().alias(target))
