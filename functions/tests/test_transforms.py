@@ -190,21 +190,21 @@ def test_to_date_does_not_mutate():
 def test_fiscal_year_calendar_year():
     df = pl.DataFrame({"date": [datetime.date(2025, 3, 15)]})
     result = fiscal_year(df, "date", fy_start_month=1)
-    assert result["fiscal_year"][0] == 2025
+    assert result["date"][0] == 2025
 
 
 def test_fiscal_year_july_start_in_new_fy():
     # July 1 2025 is the first day of FY 2026 (FY ends in Jun 2026).
     df = pl.DataFrame({"date": [datetime.date(2025, 7, 1)]})
     result = fiscal_year(df, "date", fy_start_month=7)
-    assert result["fiscal_year"][0] == 2026
+    assert result["date"][0] == 2026
 
 
 def test_fiscal_year_july_start_before_start():
     # June 30 2025 is still in FY 2025.
     df = pl.DataFrame({"date": [datetime.date(2025, 6, 30)]})
     result = fiscal_year(df, "date", fy_start_month=7)
-    assert result["fiscal_year"][0] == 2025
+    assert result["date"][0] == 2025
 
 
 def test_fiscal_year_custom_column_name():
@@ -216,7 +216,7 @@ def test_fiscal_year_custom_column_name():
 def test_fiscal_year_does_not_mutate():
     df = pl.DataFrame({"date": [datetime.date(2025, 7, 1)]})
     fiscal_year(df, "date", fy_start_month=7)
-    assert "fiscal_year" not in df.columns
+    assert df["date"][0] == datetime.date(2025, 7, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -227,19 +227,19 @@ def test_period_end_month_feb():
     # Feb 2025 has 28 days — tests that month-end logic is not off-by-one.
     df = pl.DataFrame({"date": [datetime.date(2025, 2, 15)]})
     result = period_end(df, "date", granularity="month")
-    assert result["period_end"][0] == datetime.date(2025, 2, 28)
+    assert result["date"][0] == datetime.date(2025, 2, 28)
 
 
 def test_period_end_quarter():
     df = pl.DataFrame({"date": [datetime.date(2025, 2, 15)]})
     result = period_end(df, "date", granularity="quarter")
-    assert result["period_end"][0] == datetime.date(2025, 3, 31)
+    assert result["date"][0] == datetime.date(2025, 3, 31)
 
 
 def test_period_end_year():
     df = pl.DataFrame({"date": [datetime.date(2025, 6, 15)]})
     result = period_end(df, "date", granularity="year")
-    assert result["period_end"][0] == datetime.date(2025, 12, 31)
+    assert result["date"][0] == datetime.date(2025, 12, 31)
 
 
 def test_period_end_custom_column_name():
@@ -251,7 +251,7 @@ def test_period_end_custom_column_name():
 def test_period_end_does_not_mutate():
     df = pl.DataFrame({"date": [datetime.date(2025, 1, 1)]})
     period_end(df, "date", granularity="month")
-    assert "period_end" not in df.columns
+    assert df["date"][0] == datetime.date(2025, 1, 1)
 
 
 # ---------------------------------------------------------------------------
