@@ -13,13 +13,13 @@ the expected result.
 
 ```text
 queries/sales_by_region/
-|-- query.py
-|-- test.py
-`-- testData/
-    `-- happy_path/
-        |-- sales.csv
-        |-- regions.csv
-        `-- expected.csv
+├── query.py
+├── test.py
+└── testData/
+    └── happy_path/
+        ├── sales.csv
+        ├── regions.csv
+        └── expected.csv
 ```
 
 - `query.py`: `load()` reads sources; `run(data)` transforms and returns one DataFrame.
