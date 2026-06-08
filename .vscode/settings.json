@@ -1,0 +1,14 @@
+{
+  "files.exclude": {
+    "**/.pytest_cache": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/venv": true
+  },
+  "workbench.editor.customLabels.enabled": true,
+  "workbench.editor.customLabels.patterns": {
+    "**/queries/*/query.py": "${dirname}/query.py",
+    "**/queries/*/test.py": "${dirname}/test.py"
+  }
+}
