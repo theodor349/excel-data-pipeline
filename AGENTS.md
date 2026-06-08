@@ -2,6 +2,16 @@
 
 This is a Python pipeline replacing an Excel/Power Query workflow for finance reporting. It reads Excel and MSSQL sources, transforms data through composable queries, and writes Excel/CSV outputs for Power BI consumption.
 
+## Target Audience
+
+The target user is not a developer. They are a domain expert who can describe
+business logic, review sample rows, and sanity-check output. Write docs
+and query-author guidance in plain language, using Power Query / Excel concepts
+where helpful.
+
+When creating or changing queries, the agent handles the code. The user must
+provide or confirm known-good expected values for tests.
+
 ## Working Modes
 
 Figure out which mode applies before editing.
@@ -22,6 +32,7 @@ Use this when changing the framework or shared vocabulary.
 Use this when helping the end user create or modify a report query.
 
 - Touch only the relevant `queries/<query_name>/` folder, plus `exports.json` when the query should produce an output file.
+- Communicate in business terms first: sources, columns, filters, joins, calculations, grouping, and expected output.
 - Queries must call named functions only. Do not import Polars in `query.py`; do not call `pl.*`, `.with_columns`, `.dt.*`, `.cast`, or `.sort` directly.
 - If a needed operation is missing, switch to Developer Mode first and add a small named tested function.
 - Keep `load()` for sources only and `run(data)` for transforms only.
@@ -32,13 +43,13 @@ Use this when helping the end user create or modify a report query.
 
 ## Critical Invariants
 
-- Functions-only queries; every function is tested.
+- Queries use shared named functions only.
+- Shared functions must be tested.
 - Preserve money as `Decimal` end to end.
 - Use `Decimal(str(value))`, never `Decimal(value)`.
 - Rounding is hardcoded half-up; only decimal places are configurable.
-- `settings.json` is committed finance policy.
+- `settings.json` is committed finance policy; `exports.json` is committed run policy.
 - `config.json` is gitignored and must not be committed.
-- `exports.json` is committed and controls which queries run.
 - SQL support is read-only.
 
 ## Commands

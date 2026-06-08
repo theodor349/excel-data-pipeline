@@ -1,193 +1,181 @@
 # Authoring Queries
 
-This guide is for the person who will author queries with the help of an AI coding agent. You shouldn't need to touch anything in `engine/` or `functions/`.
+Queries live under `queries/`. Each query reads named sources, calls shared
+functions, and returns one table. Edit `engine/` or `functions/` only when a
+needed operation is missing.
 
-## What a query is
+Think of a query as the Python version of one Power Query step chain: it starts
+with source tables, applies a repeatable recipe, and ends with one report table.
+You can author these with an agent by describing the business logic and checking
+the expected result.
 
-A query is one folder under `queries/` that produces **one table**. Inside the folder:
+## Structure
 
-```
+```text
 queries/sales_by_region/
-├── query.py        # the actual transformation logic — returns one table
-├── test.py         # lists the test cases (fixtures + expected output)
-└── testData/
-    └── happy_path/             # one folder per test case
-        ├── sales.csv           # one fixture per source the query loads
-        ├── regions.csv
-        └── expected.csv        # what the output table should look like
+|-- query.py
+|-- test.py
+`-- testData/
+    `-- happy_path/
+        |-- sales.csv
+        |-- regions.csv
+        `-- expected.csv
 ```
 
-Each test case gets its own folder under `testData/`. The folder holds that
-case's input fixtures plus an `expected.csv`, so everything for one case lives
-together. A query with several cases has several folders
-(`testData/happy_path/`, `testData/includes_refunds/`, …).
+- `query.py`: `load()` reads sources; `run(data)` transforms and returns one DataFrame.
+- `test.py`: defines non-empty `TESTS`.
+- `testData/<case>/`: one folder per case with fixtures and `expected.csv`.
+- `exports.json`: chooses which queries produce files.
 
-A query's table only becomes a file (xlsx or csv) when you list it in
-`exports.json` (see "Exporting", below). Queries that aren't listed there don't
-run on their own — they exist to be reused by other queries.
+Fixtures are small sample input files used only for testing. `expected.csv` is
+the table you expect from those samples. Keeping them together makes each test
+case easy to review in Excel or a text editor.
 
-Look at `queries/region_base/` for a working reference (named Excel source,
-Decimal money, aggregation, fixture test) and `queries/activity_hours/` for
-joining several sources together. `queries/region_base/` +
-`queries/region_summary/` together show how one query reuses another.
+Useful examples: `queries/region_base`, `queries/region_summary`, and
+`queries/activity_hours`.
 
-## How to create a new query (with the agent)
+## Workflow
 
-1. **Describe what you want, in plain language.** Tell the agent what data to read, what to do with it, and what the output should look like. Be concrete — name columns, give an example row.
-2. **Agent creates `query.py` and the testData fixtures.** It will use named sources from `config.json` (never a raw file path).
-3. **You compute the expected output by hand** — in Excel, on paper, or against a known-good prior run. **This step is non-negotiable for finance work.** If the agent both writes the query *and* computes the expected output, the test only proves the query agrees with itself, not with reality.
-4. **Agent encodes your expected values into the expected CSV.**
-5. **Run the test:**
-   ```bash
-   uv run python run.py --query <query_name> --test-only
-   ```
-   The output is `[OK] <query_name>` or a list of cell-level mismatches.
+1. Describe sources, joins, filters, calculations, grouping, and output columns.
+2. Agent creates `query.py`, `test.py`, and small fixture CSVs.
+3. You provide known-good expected output from Excel, hand calculation, or a
+   trusted prior run.
+4. Agent writes `expected.csv`.
+5. Run the query test:
 
-### What `test.py` looks like
+```bash
+uv run python run.py --query <query_name> --test-only
+```
 
-`test.py` defines `TESTS`, a list of test cases. Each case names the fixtures to
-feed the query and the expected output to check against:
+Finance expected values must come from you. If the agent invents both query and
+expected output, the test is not meaningful.
+
+Good prompts are specific. Name the real columns, say which rows should be kept
+or removed, describe calculations in business terms, and include one or two
+example rows when possible.
+
+## Tests
 
 ```python
 TESTS = [
     {
         "name": "Happy Path",
         "FIXTURES": {
-            "sales": "testData/happy_path/sales.csv",  # one entry per source the query loads
+            "sales": "testData/happy_path/sales.csv",
+            "regions": "testData/happy_path/regions.csv",
         },
         "EXPECTED": "testData/happy_path/expected.csv",
     },
 ]
 ```
 
-- **`name`** is just a label — it shows up in the test report so you can tell
-  which case failed.
-- **`FIXTURES`** maps each source name to a small CSV that stands in for the real
-  data.
-- **`EXPECTED`** is the one CSV holding the output you computed by hand.
+Add separate cases for important branches: empty input, refunds, missing
+categories, boundary dates, and similar risks. Keep fixtures small, usually
+10-20 rows.
 
-Put each case's files in their own `testData/<case>/` folder (the folder name is
-yours to choose — make it describe the case).
+When a test fails, the runner reports the mismatched cells. That is usually
+faster to review than comparing whole spreadsheets by eye.
 
-You can list **more than one case** to check the same query against several
-situations — a normal month, an empty input, a month with refunds, and so on.
-Each case gets its own folder, fixtures, and expected file. Every case must pass
-or the query is reported as failed:
+## Exports
+
+Queries write files only when listed in `exports.json`.
+
+```json
+{
+  "outputs": [
+    {
+      "filename": "sales_by_region.xlsx",
+      "format": "xlsx",
+      "sheets": { "Sales by Region": "sales_by_region" }
+    },
+    {
+      "filename": "fx_rates.csv",
+      "format": "csv",
+      "query": "fx_rates_clean"
+    }
+  ]
+}
+```
+
+Use `sheets` for Excel workbooks and `query` for CSV files. Leave reusable
+component queries unexported.
+
+To ship a new report, first get the query test passing, then add one entry to
+`exports.json`. Queries not listed there do not become files on their own.
+
+## Dependencies
+
+Use `DEPENDS_ON` when a query consumes another query:
+
+```python
+DEPENDS_ON = ["region_base"]
+
+def run(data):
+    base = data["region_base"]
+    ...
+```
+
+In dependent query tests, provide the dependency output as a fixture:
 
 ```python
 TESTS = [
     {
         "name": "Happy Path",
-        "FIXTURES": {"sales": "testData/happy_path/sales.csv"},
+        "FIXTURES": {"region_base": "testData/happy_path/region_base.csv"},
         "EXPECTED": "testData/happy_path/expected.csv",
-    },
-    {
-        "name": "Includes Refunds",
-        "FIXTURES": {"sales": "testData/includes_refunds/sales.csv"},
-        "EXPECTED": "testData/includes_refunds/expected.csv",
     },
 ]
 ```
 
-Compute the expected output for **each** case by hand — the same
-non-negotiable rule applies to every test.
+The dependency is not re-run during that test.
 
-## Exporting — turning a query into a file
+This lets one shared cleanup query feed several report queries. For example,
+`region_base` can standardize raw sales data once, while `region_summary` turns
+that cleaned table into the final report.
 
-Queries don't produce files on their own. The committed `exports.json` at the
-repo root says which query becomes which file:
+## Rules
 
-```json
-{
-  "outputs": [
-    { "filename": "sales_by_region.xlsx", "format": "xlsx",
-      "sheets": { "Sales by Region": "sales_by_region" } },
-    { "filename": "fx_rates.csv", "format": "csv", "query": "fx_rates_clean" }
-  ]
-}
+- Queries call named functions only.
+- Do not import Polars in `query.py`.
+- Do not call `pl.*`, `.with_columns`, `.dt.*`, `.cast`, or `.sort` directly.
+- If an operation is missing, add a small tested shared function first.
+- `load()` loads sources only; `run(data)` transforms only.
+- Validate early with `expect_non_empty` and `expect_columns`.
+- Use named sources from `config.json`, never raw paths.
+- Convert money with `to_decimal(df, "amount")`, never float.
+- Use `Decimal(str(value))`, not `Decimal(value)`.
+- Rounding is half-up; decimal places come from `settings.json` or `places=`.
+- Use arithmetic helpers for formulas:
+
+```python
+df = multiply(df, "units", "price", new_column="amount", places=4)
+df = divide(df, "amount", "months", new_column="monthly")
 ```
 
-- An **xlsx** lists `sheets` — each sheet name maps to a query name. You can put several queries' tables into one workbook as separate sheets.
-- A **csv** lists a single `query`.
-- If a query isn't referenced here (directly or through another query that needs it), it simply doesn't run.
+For non-money ratios or unit conversions, pass `as_decimal=False`.
 
-To ship a new report: write the query, get its test passing, then add one entry
-to `exports.json`.
+These rules keep query files readable for business review. Each line should look
+like a named action, not low-level dataframe code.
 
-## Splitting a query into reusable components
-
-When several reports share the same cleanup/aggregation, write that part once as
-its own query and let the others reference it. The shared query is a
-**component**; you do not export it.
-
-1. Write the component query (e.g. `region_base`) like any other — it returns one table.
-2. In the query that needs it, declare the dependency at the top of `query.py`:
-   ```python
-   DEPENDS_ON = ["region_base"]
-
-   def run(data):
-       base = data["region_base"]    # the component's output table, ready to use
-       ...
-   ```
-   The framework runs `region_base` first and hands its table to you in `data`,
-   under the same name. (It's passed in memory, so Decimal money stays exact.)
-3. In the dependent query's `test.py`, supply the component's output as a **canned fixture** — list it in a test case's `FIXTURES` under the dependency name:
-   ```python
-   TESTS = [
-       {
-           "name": "Happy Path",
-           "FIXTURES": {"region_base": "testData/happy_path/region_base.csv"},
-           "EXPECTED": "testData/happy_path/expected.csv",
-       },
-   ]
-   ```
-   You (or the agent) create `region_base.csv` as a small, representative sample
-   of what `region_base` produces. The component is **not** re-run during the
-   test — that keeps the test focused on the dependent query's own logic.
-4. Add only the deliverable (e.g. `region_summary`) to `exports.json`; the
-   component runs automatically because the deliverable depends on it.
-
-`queries/region_base/` + `queries/region_summary/` are a working example of all four steps.
-
-## Things to keep in mind
-
-- **A query is built only from the named functions.** Every step in `query.py` is a call to a shared function — `sum(...)`, `merge(...)`, `rename(...)`, `to_decimal(...)`, `sort(...)`, and so on — so the whole query reads like a recipe you can check line by line. You should never see `import polars` or `pl.something` in a query; that's the framework's job, not yours. If a report needs a step no function covers yet, that's the signal to **add a new function first** (a developer/AI task): the function gets written, gets a test, and only then does the query use it. This is what keeps the logic readable and trustworthy — every operation your reports rely on has been verified once, in isolation, with a test.
-- **Money columns must use `to_decimal(df, "amount")`.** Do not use `to_float` for money. The framework preserves Decimal precision end-to-end; floats silently drift on large sums and break ledger reconciliation. Money is rounded **half-up** (the finance convention) to the default number of decimal places set in `settings.json` (currently 2). Need a different precision for one column — say FX rates at 4 places? Pass it explicitly: `to_decimal(df, "rate", places=4)`.
-- **Computed columns use the arithmetic functions.** To build a new column from a formula, use `add`, `subtract`, `multiply`, and `divide`. Each takes a column plus either another column or a constant, and writes a new column — staying exact Decimal. Example, `(units × price) / months`:
-  ```python
-  df = multiply(df, "units", "price", new_column="ab", places=4)  # keep extra precision mid-formula
-  df = divide(df, "ab", "months", new_column="monthly")            # result rounded to 2 places, half-up
-  ```
-  Each step rounds to the default places unless you pass `places=`. For a *non-money* division (a ratio or unit conversion, e.g. milliseconds → hours), add `as_decimal=False` to get a plain number instead of money — see `activity_hours`.
-- **Return one table from `run(data)`.** Each query produces a single table; `exports.json` decides where it goes. If you need two outputs, that's two queries.
-- **Don't load files in `run(data)`.** All loading happens in `load()`; `run(data)` only transforms. This is what lets the test runner swap real sources for fixture files.
-- **Keep fixtures small.** 10–20 rows is enough — they exist to prove the logic, not to stress-test.
-- **Validate inputs at the top of `run(data)`** with `expect_non_empty` and `expect_columns`. This catches missing columns or empty source files immediately, with a clear error.
-- **Naming a new source.** When you want to read from a new Excel file or database, the developer adds it to `config.json` under `excel_sources`, `csv_sources`, or `connections`. Once named, you reference it by name only.
-
-## Running the pipeline
+## Commands
 
 ```bash
-# Run all queries (production-style — writes Excel files)
 uv run python run.py --all --output ./output
-
-# Run one query
-uv run python run.py --query example --output ./output
-
-# Run all fixture tests (no Excel/SQL is touched, no files written)
+uv run python run.py --query region_summary --output ./output
 uv run python run.py --all --test-only
-
-# Test one query
-uv run python run.py --query example --test-only
+uv run python run.py --query region_summary --test-only
 ```
 
-Production runs deliberately do **not** run fixture tests. Tests gate the *change* (when you edit a query); they don't run on every scheduled refresh.
+Production runs do not run fixture tests automatically.
 
-## When something goes wrong
+Use test commands while changing a query. Use output commands when you want the
+actual Excel or CSV files.
 
-- A query failure prints `[FAILED] <name> — see logs/<filename>` to the console. Open that log file under `output/logs/` to see the full traceback.
-- The framework keeps going if one query fails — the others still run and export.
-- `output/summary.json` has two sections: `queries` (each is `ok`, `failed` with a reason, or `skipped`) and `outputs` (each file is `written` or `failed`). Power Automate can read this without parsing logs.
-- `skipped` means a query didn't run — either nothing referenced it, or one of its `DEPENDS_ON` dependencies failed. A file whose query failed or was skipped is **not** written (no half-finished files).
-- A cyclic dependency (A needs B, B needs A) or a typo'd query name in `exports.json` / `DEPENDS_ON` stops the whole run up front with a clear message — fix the name and re-run.
-- If Power BI has an output file open when the pipeline runs, that file will fail with a clear "file in use" error. Close Power BI and re-run.
+## Failures
+
+- Failures print `[FAILED] <name> - see logs/<filename>`.
+- Tracebacks are under `output/logs/`.
+- `output/summary.json` records query and output status.
+- A failed or skipped query does not write partial output.
+- Cycles and typoed query names stop the run before execution.
+- Open output files, usually in Power BI, must be closed before re-running.
