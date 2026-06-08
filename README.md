@@ -1,6 +1,6 @@
 # excel-data-pipeline
 
-Python (Polars) replacement for an Excel/Power Query workflow. It reads Excel + CSV + JSONL + MSSQL, transforms data through composable queries, and writes Excel/CSV files for Power BI consumption. See `QUERIES.md` for authoring queries and `CLAUDE.md` for the architecture and conventions.
+Python (Polars) replacement for an Excel/Power Query workflow. It reads Excel + CSV + JSONL + MSSQL, transforms data through composable queries, and writes Excel/CSV files for Power BI consumption. See `INSTALL.md` for first-time setup (non-developer, step-by-step), `QUERIES.md` for authoring queries, and `CLAUDE.md` for the architecture and conventions.
 
 ## Architecture
 
@@ -24,12 +24,21 @@ in `functions/` ships with a unit test**, and money-handling functions ship with
 an exact-Decimal precision test. The readability of queries is only safe because
 the functions beneath them are verified — including any AI-authored ones.
 
-## Setup (developer)
+## Setup
+
+**First time / non-developer?** Follow `INSTALL.md` — a step-by-step guide from a clean
+machine (install Python, install `uv`, get the project, `uv sync`, verify, configure) for
+someone who maintains queries but isn't a developer.
+
+**Developer extending the framework** (modifying `engine/`, `functions/`, or adding
+shared transforms):
 
 ```bash
 uv sync
 uv run pytest
 ```
+
+Read `CLAUDE.md` for the full architecture and testing requirements.
 
 ## Running the pipeline
 
