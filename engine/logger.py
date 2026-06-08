@@ -15,6 +15,11 @@ def setup_logger(output_folder: str | Path, run_started_at: datetime | None = No
 
     logger = logging.getLogger("pipeline")
     logger.setLevel(logging.INFO)
+    # Close existing handlers before dropping them — clear() alone detaches the
+    # old FileHandler without closing its file, leaking the open log file until
+    # GC (surfaces as ResourceWarning when setup_logger is called repeatedly).
+    for handler in logger.handlers:
+        handler.close()
     logger.handlers.clear()
 
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
