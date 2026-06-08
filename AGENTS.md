@@ -55,7 +55,6 @@ uv run python run.py --query region_summary --test-only
 
 ## Useful References
 
-- `CLAUDE.md`: full agent instructions and project rules.
 - `README.md`: running the pipeline.
 - `QUERIES.md`: user-facing query-author workflow.
 - `queries/region_base` and `queries/region_summary`: composition examples.
